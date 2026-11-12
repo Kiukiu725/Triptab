@@ -3,1622 +3,615 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>✈️ 旅行夾錢記帳 App</title>
   
-  <!-- PWA & iOS / Android 變身手機真 App 核心設定 (全螢幕無網址列) -->
+  <!-- PWA & Mobile Web App Meta Tags -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="旅行夾錢" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="theme-color" content="#0d9488" />
-  <title>旅行夾錢神器 ✈️</title>
+  <meta name="theme-color" content="#2563eb" />
 
-  <!-- 動態生成嘅高清 App Icon 同埋 PWA Manifest 會自動注入呢度 -->
-  <link id="dynamic-favicon" rel="icon" type="image/png" />
-  <link id="dynamic-touch-icon" rel="apple-touch-icon" />
-  <link id="dynamic-manifest" rel="manifest" />
-
-  <!-- Tailwind CSS -->
+  <!-- React 18 & Babel CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- FontAwesome Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-  <!-- Google Fonts: Inter & Noto Sans HK -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Noto+Sans+HK:wght@400;500;700;900&display=swap" rel="stylesheet" />
+
+  <!-- Firebase Compat SDKs (App + Realtime Database) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 
   <style>
-    * {
-      -webkit-tap-highlight-color: transparent;
-      font-family: 'Inter', 'Noto Sans HK', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
     body {
-      background-color: #0f172a;
-      overscroll-behavior-y: none;
+      -webkit-tap-highlight-color: transparent;
       user-select: none;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
     }
-    /* 適配 iPhone 頂部 Dynamic Island / 瀏海 及 底部 Home Bar 安全距離 */
-    .safe-top {
-      padding-top: max(1.25rem, env(safe-area-inset-top));
-    }
-    .safe-bottom {
-      padding-bottom: max(1rem, env(safe-area-inset-bottom));
-    }
-    /* 隱藏捲軸但保留滑動 */
-    .no-scrollbar::-webkit-scrollbar {
-      display: none;
-    }
-    .no-scrollbar {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
-    @keyframes slideUp {
-      from { transform: translateY(100%); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-    .animate-slide-up {
-      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    input, select, textarea {
+      user-select: auto;
     }
   </style>
 </head>
-<body class="flex justify-center items-start min-h-screen sm:py-6 text-slate-800">
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
+  <div id="root"></div>
 
-  <!-- 手機真 App 容器 (喺電腦睇係一部 iPhone 外框，喺手機打開係 100% 全螢幕真 App) -->
-  <div class="w-full max-w-md bg-slate-50 min-h-screen sm:min-h-[850px] sm:max-h-[92vh] sm:rounded-[42px] sm:shadow-2xl sm:border-[7px] sm:border-slate-800 flex flex-col justify-between overflow-hidden relative">
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
 
-    <!-- 頂部浮動 Toast 提示 -->
-    <div id="toast" class="fixed top-6 left-1/2 -translate-x-1/2 z-50 hidden bg-slate-900/95 text-white px-4 py-2.5 rounded-full shadow-xl text-xs font-bold items-center gap-2 border border-white/10 transition-all">
-      <i class="fa-solid fa-sparkles text-amber-400"></i>
-      <span id="toast-text">提示訊息</span>
-    </div>
-
-    <!-- 頂部「變身手機真 App」橫幅 (如果檢測到未加落主畫面就會顯示) -->
-    <div id="install-banner" class="bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white px-4 py-2 text-xs font-bold flex items-center justify-between shadow-sm z-20">
-      <div class="flex items-center gap-2 truncate">
-        <span class="bg-white/20 p-1 rounded-lg">📲</span>
-        <span class="truncate">可以加落手機主畫面，變身全螢幕真 App！</span>
-      </div>
-      <button onclick="openModal('pwa-modal')" class="bg-white text-orange-600 px-2.5 py-1 rounded-full text-[11px] font-black shrink-0 shadow-xs active:scale-95 transition">
-        點樣裝？
-      </button>
-    </div>
-
-    <!-- 可捲動主內容區 -->
-    <div class="flex-1 overflow-y-auto pb-28 no-scrollbar">
-
-      <!-- App Header 漸變卡片 -->
-      <div class="bg-gradient-to-br from-teal-600 via-emerald-600 to-cyan-700 text-white safe-top pb-5 px-5 rounded-b-[32px] shadow-md relative">
-        
-        <!-- 第一行：旅程名稱 + 雲端房間號 + 安裝教學掣 -->
-        <div class="flex items-center justify-between gap-2 mb-3">
-          <div onclick="promptEditTripName()" class="flex items-center gap-1.5 cursor-pointer group min-w-0">
-            <h1 id="trip-name-display" class="text-lg sm:text-xl font-black tracking-tight truncate">日本自駕遊 🚗</h1>
-            <i class="fa-solid fa-pen text-xs text-teal-200 group-hover:text-white transition shrink-0"></i>
-          </div>
-
-          <div class="flex items-center gap-1.5 shrink-0">
-            <!-- 共享房間掣 -->
-            <button onclick="openModal('room-modal')" class="flex items-center gap-1.5 bg-black/25 hover:bg-black/35 active:scale-95 transition px-2.5 py-1.5 rounded-full text-[11px] font-bold backdrop-blur-xs border border-white/15">
-              <span id="sync-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>房號: <strong id="room-code-badge" class="tracking-wider">JP2026</strong></span>
-            </button>
-            <!-- 變身真 App 掣 -->
-            <button onclick="openModal('pwa-modal')" class="bg-white/15 hover:bg-white/25 active:scale-95 transition w-8 h-8 rounded-full flex items-center justify-center text-xs backdrop-blur-xs" title="加至主畫面教學">
-              <i class="fa-solid fa-mobile-screen-button"></i>
-            </button>
-          </div>
-        </div>
-
-        <!-- 第二行：即時匯率狀態 Bar -->
-        <div class="flex items-center justify-between text-[11px] text-teal-100 mb-3 px-0.5">
-          <div id="rate-status-badge" class="flex items-center gap-1.5">
-            <i class="fa-solid fa-circle-notch fa-spin text-amber-300"></i>
-            <span>連線緊國際即時匯率...</span>
-          </div>
-          <button onclick="switchTab('settings')" class="underline hover:text-white font-bold flex items-center gap-1">
-            <span id="header-rate-text">100 JPY = 5.18 HKD</span>
-            <i class="fa-solid fa-chevron-right text-[9px]"></i>
-          </button>
-        </div>
-
-        <!-- 總開支玻璃卡片 -->
-        <div class="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-4 flex items-center justify-between shadow-inner">
-          <div>
-            <p class="text-teal-100 text-[11px] font-semibold mb-0.5">旅程總開支 (自動折合港幣)</p>
-            <div id="total-hkd-display" class="text-3xl font-black tracking-tight">HK$ 0</div>
-            <p id="total-foreign-display" class="text-xs text-teal-100 mt-1 font-medium">折合約 🇯🇵 ¥0 (日圓)</p>
-          </div>
-          <div class="text-right">
-            <span id="per-person-badge" class="inline-block bg-black/20 text-teal-100 text-[11px] font-semibold px-2.5 py-1 rounded-lg mb-1">
-              人均 (4人)
-            </span>
-            <div id="per-person-hkd" class="text-lg font-extrabold">HK$ 0</div>
-          </div>
-        </div>
-
-        <!-- 同行成員橫向清單 + 邀請朋友掣 -->
-        <div class="mt-3.5 flex items-center justify-between gap-2">
-          <div id="header-members-list" class="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-            <!-- 由 JS 動態渲染成員膠囊 -->
-          </div>
-          <button onclick="openModal('room-modal')" class="shrink-0 bg-white text-teal-800 hover:bg-teal-50 active:scale-95 transition px-3 py-1 rounded-full text-xs font-extrabold flex items-center gap-1 shadow-xs">
-            <i class="fa-solid fa-user-plus text-[11px]"></i>
-            邀請朋友同步
-          </button>
-        </div>
-      </div>
-
-      <!-- 分頁內容區 -->
-      <div class="px-4 mt-4">
-
-        <!-- TAB 1: 開支明細列表 -->
-        <div id="tab-expenses" class="space-y-3">
-          <div class="flex items-center justify-between px-1">
-            <h2 class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">
-              🧾 記帳明細 (<span id="expense-count">0</span> 筆)
-            </h2>
-            <button onclick="openAddExpenseModal()" class="text-xs font-extrabold text-teal-600 hover:underline flex items-center gap-1">
-              <i class="fa-solid fa-plus-circle"></i> 記低一筆
-            </button>
-          </div>
-          <div id="expenses-container" class="space-y-2.5">
-            <!-- JS 動態渲染開支項目 -->
-          </div>
-        </div>
-
-        <!-- TAB 2: 結算夾錢 (PayMe / FPS 最簡化過數) -->
-        <div id="tab-settle" class="hidden space-y-4">
-          <div class="bg-white rounded-2xl p-4 shadow-xs border border-slate-100">
-            <div class="flex items-center justify-between mb-3">
-              <div>
-                <h2 class="text-sm font-black text-slate-800 flex items-center gap-1.5">
-                  <span>💸</span> 最簡化過數清單 (以港幣結算)
-                </h2>
-                <p class="text-[11px] text-slate-400 mt-0.5">
-                  系統已自動將所有外幣對沖，用最少過數次數搞掂！
-                </p>
-              </div>
-            </div>
-
-            <div id="settlement-transactions" class="space-y-2.5">
-              <!-- JS 動態渲染過數指示 -->
-            </div>
-
-            <button onclick="copyWhatsAppSettlement()" class="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold py-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition">
-              <i class="fa-brands fa-whatsapp text-base"></i>
-              <span>一鍵複製結算單 (貼去 WhatsApp 群組)</span>
-            </button>
-          </div>
-
-          <!-- 個人墊支及應付明細 -->
-          <div class="bg-white rounded-2xl p-4 shadow-xs border border-slate-100">
-            <h3 class="text-sm font-black text-slate-800 mb-3">👥 每位成員墊支 vs 應付明細</h3>
-            <div id="member-balances-list" class="space-y-2.5">
-              <!-- JS 動態渲染個人結餘 -->
-            </div>
-          </div>
-
-          <!-- 消費分類統計 -->
-          <div class="bg-white rounded-2xl p-4 shadow-xs border border-slate-100">
-            <h3 class="text-sm font-black text-slate-800 mb-3">📊 消費分類統計</h3>
-            <div id="category-stats-list" class="space-y-3">
-              <!-- JS 動態渲染分類比例條 -->
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB 3: 匯率、新增外幣及成員管理 -->
-        <div id="tab-settings" class="hidden space-y-4">
-          
-          <!-- 區塊 1: 國際即時匯率及主貨幣選擇 -->
-          <div class="bg-white p-4 rounded-2xl shadow-xs border border-slate-100">
-            <div class="flex items-center justify-between mb-3">
-              <div>
-                <h3 class="text-sm font-black text-slate-800">💱 旅程主要貨幣及即時匯率</h3>
-                <p id="settings-rate-sub" class="text-[11px] text-slate-400 mt-0.5">支援全球貨幣，自動連網更新牌價</p>
-              </div>
-              <button onclick="fetchLiveExchangeRates(true)" class="bg-teal-600 hover:bg-teal-700 active:scale-95 text-white px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-xs transition">
-                <i id="refresh-icon" class="fa-solid fa-arrows-rotate"></i>
-                <span>更新即時匯率</span>
-              </button>
-            </div>
-
-            <!-- 貨幣選擇格仔 -->
-            <div id="currency-grid" class="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mb-3 max-h-48 overflow-y-auto p-0.5">
-              <!-- JS 渲染貨幣掣 -->
-            </div>
-
-            <!-- 當前選中貨幣匯率微調器 -->
-            <div id="rate-editor-box" class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-              <div class="flex items-center justify-between">
-                <span id="rate-editor-label" class="text-xs font-bold text-slate-700">每 100 JPY 兌港幣：</span>
-                <div class="flex items-center gap-1">
-                  <span class="text-xs font-bold text-slate-400">HK$</span>
-                  <input id="manual-rate-input" type="number" step="any" onchange="handleManualRateChange(this.value)" class="w-24 text-right font-black text-sm text-teal-700 bg-white border border-teal-300 px-2.5 py-1 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                </div>
-              </div>
-              <div id="rate-lock-status" class="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/70 text-slate-400">
-                <span>💡 提示：直接改數字即可鎖定你喺找換店唱錢嘅實際匯率！</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 區塊 2: 自由新增任何其他國家貨幣 -->
-          <div class="bg-teal-50/70 p-4 rounded-2xl border border-teal-200/80">
-            <h3 class="text-xs font-black text-teal-900 mb-1 flex items-center gap-1.5">
-              <i class="fa-solid fa-earth-asia text-teal-600"></i>
-              清單冇你要嘅外幣？自由新增全球任何貨幣
-            </h3>
-            <p class="text-[11px] text-teal-700/80 mb-2.5">
-              輸入 3 個英文字母代號（例如 <code class="font-bold">VND</code> 越南盾、<code class="font-bold">NZD</code> 紐元、<code class="font-bold">PHP</code> 披索、<code class="font-bold">ISK</code> 冰島克朗），系統會自動幫你上網查埋最新匯率！
-            </p>
-            <div class="grid grid-cols-3 gap-2 mb-2">
-              <input id="custom-cur-code" type="text" maxlength="5" placeholder="代號 (如 VND)" oninput="autoFillCustomCurrencyRate(this.value)" class="bg-white border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-extrabold uppercase focus:outline-none focus:ring-2 focus:ring-teal-500" />
-              <input id="custom-cur-name" type="text" placeholder="名稱 (如 越南盾)" class="bg-white border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-teal-500" />
-              <input id="custom-cur-symbol" type="text" placeholder="符號 (選填)" class="bg-white border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-teal-500" />
-            </div>
-            <div class="flex gap-2">
-              <div class="flex-1 flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5">
-                <span class="text-[11px] text-slate-400 font-bold mr-2 shrink-0">每 100 外幣兌 HK$</span>
-                <input id="custom-cur-rate" type="number" step="any" placeholder="自動預填匯率" class="w-full text-xs font-black text-teal-700 focus:outline-none text-right" />
-              </div>
-              <button onclick="addCustomCurrency()" class="bg-teal-700 hover:bg-teal-800 active:scale-95 text-white px-4 py-2 rounded-xl text-xs font-extrabold shrink-0 transition">
-                ＋ 新增貨幣
-              </button>
-            </div>
-          </div>
-
-          <!-- 區塊 3: 同行成員管理 -->
-          <div class="bg-white p-4 rounded-2xl shadow-xs border border-slate-100">
-            <h3 class="text-sm font-black text-slate-800 mb-2.5">👥 同行成員名單</h3>
-            <div id="settings-members-list" class="space-y-2 mb-3">
-              <!-- JS 渲染成員列表 -->
-            </div>
-            <div class="flex gap-2">
-              <input id="new-member-input" type="text" placeholder="輸入新成員稱呼 (例如：表姐、阿強)" onkeydown="if(event.key==='Enter') addMember()" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-teal-500" />
-              <button onclick="addMember()" class="bg-slate-800 hover:bg-slate-900 active:scale-95 text-white px-4 py-2 rounded-xl text-xs font-extrabold shrink-0 transition">
-                ＋ 加入成員
-              </button>
-            </div>
-          </div>
-
-          <!-- 重置/清空數據掣 -->
-          <div class="bg-white p-4 rounded-2xl shadow-xs border border-slate-100 flex items-center justify-between">
-            <div>
-              <div class="text-xs font-extrabold text-slate-700">開始新旅程 / 清空目前帳目</div>
-              <div class="text-[11px] text-slate-400">保留成員名單，但清空所有示範開支紀錄</div>
-            </div>
-            <button onclick="clearAllExpenses()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-2 rounded-xl text-xs font-extrabold transition">
-              清空帳目
-            </button>
-          </div>
-
-        </div>
-
-      </div>
-    </div>
-
-    <!-- 底部原生感導航列 (Bottom Tab Bar) -->
-    <div class="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-4 pt-2 safe-bottom flex items-center justify-around z-30">
-      <button onclick="switchTab('expenses')" id="nav-expenses" class="flex flex-col items-center gap-1 py-1 px-3 text-teal-600 font-extrabold transition">
-        <i class="fa-solid fa-receipt text-lg"></i>
-        <span class="text-[10px]">記帳明細</span>
-      </button>
-
-      <button onclick="switchTab('settle')" id="nav-settle" class="flex flex-col items-center gap-1 py-1 px-3 text-slate-400 font-bold transition">
-        <i class="fa-solid fa-scale-balanced text-lg"></i>
-        <span class="text-[10px]">結算夾錢</span>
-      </button>
-
-      <!-- 中間凸出「＋記一筆」大掣 -->
-      <button onclick="openAddExpenseModal()" class="bg-gradient-to-tr from-teal-600 to-emerald-500 hover:from-teal-700 hover:to-emerald-600 active:scale-95 text-white font-black px-5 py-2.5 rounded-2xl shadow-lg shadow-teal-600/30 flex items-center gap-1.5 text-xs transition -mt-3 border-2 border-white">
-        <i class="fa-solid fa-plus text-sm"></i>
-        <span>記一筆</span>
-      </button>
-
-      <button onclick="switchTab('settings')" id="nav-settings" class="flex flex-col items-center gap-1 py-1 px-3 text-slate-400 font-bold transition">
-        <i class="fa-solid fa-coins text-lg"></i>
-        <span class="text-[10px]">匯率/成員</span>
-      </button>
-
-      <button onclick="openModal('pwa-modal')" class="flex flex-col items-center gap-1 py-1 px-3 text-slate-400 font-bold transition">
-        <i class="fa-solid fa-mobile-screen text-lg"></i>
-        <span class="text-[10px]">變真App</span>
-      </button>
-    </div>
-
-    <!-- ================= MODALS (彈出視窗) ================= -->
-
-    <!-- MODAL 1: 記低一筆新開支 -->
-    <div id="add-expense-modal" class="fixed inset-0 z-40 hidden bg-slate-900/60 backdrop-blur-xs items-end sm:items-center justify-center p-0 sm:p-4">
-      <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl max-h-[92vh] overflow-y-auto animate-slide-up">
-        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-          <h2 class="text-base font-black text-slate-800">✍️ 記低一筆新開支</h2>
-          <button onclick="closeModal('add-expense-modal')" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 flex items-center justify-center">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-
-        <div class="space-y-4 mt-4">
-          <!-- 項目名稱 + 懶人快選 Tag -->
-          <div>
-            <label class="block text-xs font-extrabold text-slate-600 mb-1.5">消費項目名稱</label>
-            <input id="exp-title-input" type="text" placeholder="例如：租車尾數、一蘭拉麵、藥妝手信..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white" />
-            <div class="flex flex-wrap gap-1.5 mt-2">
-              <button type="button" onclick="setQuickTag('租車/入油')" class="text-[11px] bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-600 px-2.5 py-1 rounded-lg font-bold transition">+ 租車/入油</button>
-              <button type="button" onclick="setQuickTag('高速公路過路費')" class="text-[11px] bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-600 px-2.5 py-1 rounded-lg font-bold transition">+ 高速過路費</button>
-              <button type="button" onclick="setQuickTag('居酒屋晚餐')" class="text-[11px] bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-600 px-2.5 py-1 rounded-lg font-bold transition">+ 居酒屋晚餐</button>
-              <button type="button" onclick="setQuickTag('超市買生果宵夜')" class="text-[11px] bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-600 px-2.5 py-1 rounded-lg font-bold transition">+ 超市買生果宵夜</button>
-              <button type="button" onclick="setQuickTag('泊車費')" class="text-[11px] bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-600 px-2.5 py-1 rounded-lg font-bold transition">+ 泊車費</button>
-            </div>
-          </div>
-
-          <!-- 金額與幣種 -->
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-xs font-extrabold text-slate-600">金額及外幣 (自動轉港紙)</label>
-              <button type="button" onclick="closeModal('add-expense-modal'); switchTab('settings');" class="text-[11px] font-bold text-teal-600 hover:underline">+ 新增其他外幣</button>
-            </div>
-            <div class="flex gap-2">
-              <select id="exp-currency-select" onchange="updateModalHKDPreview()" class="bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-2.5 text-xs font-extrabold text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
-                <!-- JS 動態填入所有貨幣 -->
-              </select>
-              <input id="exp-amount-input" type="number" step="any" oninput="updateModalHKDPreview()" placeholder="輸入金額 (如 12000)" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white" />
-            </div>
-            <p id="exp-hkd-preview" class="text-xs text-teal-600 font-bold mt-1.5 hidden"></p>
-          </div>
-
-          <!-- 分類 -->
-          <div>
-            <label class="block text-xs font-extrabold text-slate-600 mb-1.5">消費分類</label>
-            <div id="exp-category-grid" class="grid grid-cols-5 gap-1.5">
-              <!-- JS 渲染分類掣 -->
-            </div>
-          </div>
-
-          <!-- 邊個俾錢先 (墊支) -->
-          <div>
-            <label class="block text-xs font-extrabold text-slate-600 mb-1.5">邊個俾錢先 (墊支人)？</label>
-            <div id="exp-payer-grid" class="grid grid-cols-3 gap-2">
-              <!-- JS 渲染墊支人掣 -->
-            </div>
-          </div>
-
-          <!-- 邊個夾份 -->
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-xs font-extrabold text-slate-600">邊個夾份？</label>
-              <button type="button" onclick="selectAllSplitMembers()" class="text-xs font-extrabold text-teal-600 hover:underline">全選所有人</button>
-            </div>
-            <div id="exp-split-grid" class="grid grid-cols-2 gap-2">
-              <!-- JS 渲染分攤成員掣 -->
-            </div>
-          </div>
-
-          <button onclick="saveNewExpense()" class="w-full bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-black py-3.5 rounded-xl text-sm shadow-md transition mt-2">
-            確認儲存呢筆數
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- MODAL 2: 變身手機真 App (Add to Home Screen) + 放上網俾朋友用全攻略 -->
-    <div id="pwa-modal" class="fixed inset-0 z-40 hidden bg-slate-900/60 backdrop-blur-xs items-end sm:items-center justify-center p-0 sm:p-4">
-      <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl max-h-[92vh] overflow-y-auto animate-slide-up">
-        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-          <h2 class="text-base font-black text-slate-800 flex items-center gap-2">
-            <span>📲</span> 變身手機真 App & 分享俾朋友
-          </h2>
-          <button onclick="closeModal('pwa-modal')" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 flex items-center justify-center">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-
-        <div class="space-y-4 mt-4 text-xs leading-relaxed text-slate-600">
-          <!-- 預覽自動生成嘅 App Icon -->
-          <div class="bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200 rounded-2xl p-3.5 flex items-center gap-3.5">
-            <img id="modal-app-icon-preview" src="" alt="App Icon" class="w-14 h-14 rounded-2xl shadow-md shrink-0 border border-white" />
-            <div>
-              <div class="font-black text-slate-800 text-sm">已內置專屬高清 App Icon！</div>
-              <div class="text-[11px] text-slate-500 mt-0.5">
-                加落手機主畫面之後，打開係**100% 全螢幕（冇網址列）**，同 App Store 下載落嚟嘅真 App 一模一樣！
-              </div>
-            </div>
-          </div>
-
-          <!-- 第一步：點樣俾冇 Gemini 嘅朋友一齊用 -->
-          <div class="bg-amber-50/80 border border-amber-200 rounded-2xl p-3.5 space-y-2">
-            <div class="font-black text-amber-900 text-sm flex items-center gap-1.5">
-              <span>🚀</span> 點樣擺上網俾朋友免登入即開即用？
-            </div>
-            <ol class="list-decimal list-inside space-y-1.5 text-amber-900/90 font-medium">
-              <li>喺呢個預覽畫面右上角撳 <strong>「Share (分享公開連結)」</strong>，或者將呢個 <code class="bg-white px-1.5 py-0.5 rounded font-bold">index.html</code> 檔案下載落嚟。</li>
-              <li>如果想有條靚網址（例如 <code class="bg-white px-1 py-0.5 rounded">japan-trip.tiiny.site</code>），去免費網站 <strong>tiiny.host</strong> 或 <strong>app.netlify.com/drop</strong>，將呢個 HTML 檔案拖入去，3 秒就有一條永久免費 Link！</li>
-              <li>將條 Link Send 去 WhatsApp Group，叫朋友跟下面步驟「加至主畫面」！</li>
-            </ol>
-          </div>
-
-          <!-- iPhone Safari 教學 -->
-          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
-            <div class="font-black text-slate-800 text-sm flex items-center gap-1.5">
-              <i class="fa-brands fa-apple text-base"></i> iPhone (Safari) 變真 App 步驟：
-            </div>
-            <div class="space-y-1.5 text-slate-600 font-medium">
-              <p>1️⃣ 用 <strong>Safari</strong> 打開條 Link，撳畫面最底中間嘅 <strong>「分享掣」</strong>（向上箭嘴 <i class="fa-solid fa-arrow-up-from-bracket text-teal-600"></i>）。</p>
-              <p>2️⃣ 向下拉選單，撳 <strong>「加至主畫面 (Add to Home Screen)」</strong> <i class="fa-regular fa-square-plus text-teal-600"></i>。</p>
-              <p>3️⃣ 撳右上角「新增」，手機桌面就會多咗個 <strong>「旅行夾錢」App Icon</strong>！</p>
-            </div>
-          </div>
-
-          <!-- Android Chrome 教學 -->
-          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
-            <div class="font-black text-slate-800 text-sm flex items-center gap-1.5">
-              <i class="fa-brands fa-android text-emerald-600 text-base"></i> Android (Chrome) 變真 App 步驟：
-            </div>
-            <div class="space-y-1.5 text-slate-600 font-medium">
-              <p>1️⃣ 用 <strong>Chrome</strong> 打開條 Link，撳右上角 <strong>「⋮」</strong> 選單掣。</p>
-              <p>2️⃣ 揀 <strong>「加至主畫面」</strong> 或 <strong>「安裝應用程式 (Install App)」</strong> 即刻搞掂！</p>
-            </div>
-          </div>
-
-          <button onclick="closeModal('pwa-modal')" class="w-full bg-teal-600 text-white font-black py-3 rounded-xl text-xs">
-            明白晒！返回計數
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- MODAL 3: 多人雲端同步房間 & 同步碼分享 -->
-    <div id="room-modal" class="fixed inset-0 z-40 hidden bg-slate-900/60 backdrop-blur-xs items-end sm:items-center justify-center p-0 sm:p-4">
-      <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl max-h-[92vh] overflow-y-auto animate-slide-up">
-        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-          <h2 class="text-base font-black text-slate-800 flex items-center gap-2">
-            <span>☁️</span> 朋友多人同步 & 邀請連結
-          </h2>
-          <button onclick="closeModal('room-modal')" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 flex items-center justify-center">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-
-        <div class="space-y-4 mt-4">
-          <!-- 雲端房間暗號設定 -->
-          <div class="bg-teal-50/80 border border-teal-200 rounded-2xl p-4 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-black text-teal-950">🔑 旅程專屬房間暗號</span>
-              <span id="cloud-status-pill" class="text-[11px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
-                🟢 雲端即時同步中
-              </span>
-            </div>
-            <p class="text-[11px] text-teal-800/80 leading-relaxed">
-              只要你同朋友輸入**同一個房間暗號**（例如 <code class="font-bold">OSAKA88</code>），任何人喺自己手機記低一筆數，成班人打開個 App 都會即時同步見到最新帳目！
-            </p>
-            <div class="flex gap-2 pt-1">
-              <input id="room-code-input" type="text" maxlength="16" placeholder="輸入自訂房號 (如 TOKYO2026)" class="flex-1 bg-white border border-teal-300 rounded-xl px-3.5 py-2 text-sm font-black uppercase tracking-wider text-teal-900 focus:outline-none focus:ring-2 focus:ring-teal-500" />
-              <button onclick="switchRoomCode()" class="bg-teal-700 hover:bg-teal-800 active:scale-95 text-white px-4 py-2 rounded-xl text-xs font-extrabold shrink-0 transition">
-                切換/入房
-              </button>
-            </div>
-          </div>
-
-          <!-- 一鍵複製 WhatsApp 邀請訊息 (連埋一條包含全部數據嘅連結) -->
-          <div class="bg-white border border-slate-200 rounded-2xl p-4 space-y-2.5">
-            <div class="text-xs font-black text-slate-800">📲 一鍵 Send 俾 WhatsApp 旅伴</div>
-            <p class="text-[11px] text-slate-500">
-              撳下面粒掣會複製一段邀請訊息（連埋當前房間號同埋帳目備份碼），Send 去群組俾朋友一撳即刻同步！
-            </p>
-            <button onclick="copyInviteLinkWithBackup()" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-extrabold py-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition">
-              <i class="fa-brands fa-whatsapp text-base"></i>
-              <span>複製 WhatsApp 旅伴邀請連結 & 同步碼</span>
-            </button>
-          </div>
-
-          <!-- 離線/跨平台「一鍵貼上同步碼」備份功能 (就算無連雲端都 100% 同步到) -->
-          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
-            <div class="text-xs font-black text-slate-700">📦 手動貼上朋友傳嚟嘅「同步碼」</div>
-            <p class="text-[11px] text-slate-400">
-              如果朋友喺 WhatsApp Send 咗段同步碼俾你，貼落下面撳載入，就會即刻更新晒成個旅程嘅帳目：
-            </p>
-            <div class="flex gap-2">
-              <input id="import-code-input" type="text" placeholder="喺度貼上朋友 Send 嚟嘅同步碼..." class="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-teal-500" />
-              <button onclick="importBackupCode()" class="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-xl text-xs font-extrabold shrink-0">
-                載入帳目
-              </button>
-            </div>
-          </div>
-
-          <button onclick="closeModal('room-modal')" class="w-full bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs">
-            關閉視窗
-          </button>
-        </div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- ================= JAVASCRIPT & FIREBASE 雲端同步邏輯 ================= -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-    // ---------------------------------------------------------
-    // 1. 動態生成高清手機桌面 App Icon (Canvas -> Apple Touch Icon & PWA Manifest)
-    // ---------------------------------------------------------
-    function generateNativeAppIconAndManifest() {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext('2d');
-
-        // 畫圓角漸變背景
-        const grad = ctx.createLinearGradient(0, 0, 512, 512);
-        grad.addColorStop(0, '#0d9488');
-        grad.addColorStop(0.5, '#059669');
-        grad.addColorStop(1, '#0284c7');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.roundRect(0, 0, 512, 512, 115);
-        ctx.fill();
-
-        // 畫裝飾光圈
-        ctx.fillStyle = 'rgba(255,255,255,0.12)';
-        ctx.beginPath();
-        ctx.arc(400, 110, 160, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 畫飛機與計數符號
-        ctx.font = 'bold 210px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('✈️', 256, 210);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '900 84px "Noto Sans HK", sans-serif';
-        ctx.fillText('旅行夾錢', 256, 395);
-
-        const iconDataUrl = canvas.toDataURL('image/png');
-        document.getElementById('dynamic-favicon').href = iconDataUrl;
-        document.getElementById('dynamic-touch-icon').href = iconDataUrl;
-        const previewImg = document.getElementById('modal-app-icon-preview');
-        if (previewImg) previewImg.src = iconDataUrl;
-
-        // 動態建立 PWA Web Manifest 令 Android / iOS 識別為獨立全螢幕真 App
-        const manifestObj = {
-          name: "旅行夾錢神器",
-          short_name: "旅行夾錢",
-          description: "外幣即時換算、多人夾錢、最簡化 PayMe/FPS 結算神器",
-          start_url: window.location.href,
-          display: "standalone",
-          background_color: "#0f172a",
-          theme_color: "#0d9488",
-          orientation: "portrait",
-          icons: [
-            { src: iconDataUrl, sizes: "512x512", type: "image/png", purpose: "any maskable" }
-          ]
-        };
-        const manifestBlob = new Blob([JSON.stringify(manifestObj)], { type: 'application/json' });
-        document.getElementById('dynamic-manifest').href = URL.createObjectURL(manifestBlob);
-
-        // 如果已經係「主畫面全螢幕真 App 模式」打開，就自動收埋頂部安裝提示橫幅
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-        if (isStandalone) {
-          document.getElementById('install-banner').classList.add('hidden');
-        }
-      } catch (e) {
-        console.warn('Icon generation skipped:', e);
-      }
+    // 初始化 Firebase
+    const firebaseConfig = {
+      databaseURL: "https://travel-split-app-78a36-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    };
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
     }
+    const db = firebase.database();
 
-    // ---------------------------------------------------------
-    // 2. 預設全球熱門旅遊貨幣庫 & 分類設定
-    // ---------------------------------------------------------
-    const DEFAULT_CURRENCIES = {
-      JPY: { code: 'JPY', name: '日圓', symbol: '¥', flag: '🇯🇵', per100: 5.18, isCustomRate: false },
-      TWD: { code: 'TWD', name: '台幣', symbol: 'NT$', flag: '🇹🇼', per100: 24.3, isCustomRate: false },
-      SGD: { code: 'SGD', name: '坡紙', symbol: 'S$', flag: '🇸🇬', per100: 582.0, isCustomRate: false },
-      KRW: { code: 'KRW', name: '韓元', symbol: '₩', flag: '🇰🇷', per100: 0.56, isCustomRate: false },
-      THB: { code: 'THB', name: '泰銖', symbol: '฿', flag: '🇹🇭', per100: 22.8, isCustomRate: false },
-      CNY: { code: 'CNY', name: '人民幣', symbol: '¥', flag: '🇨🇳', per100: 108.5, isCustomRate: false },
-      EUR: { code: 'EUR', name: '歐元', symbol: '€', flag: '🇪🇺', per100: 845.0, isCustomRate: false },
-      GBP: { code: 'GBP', name: '英鎊', symbol: '£', flag: '🇬🇧', per100: 995.0, isCustomRate: false },
-      USD: { code: 'USD', name: '美金', symbol: 'US$', flag: '🇺🇸', per100: 778.5, isCustomRate: false },
-      AUD: { code: 'AUD', name: '澳元', symbol: 'A$', flag: '🇦🇺', per100: 512.0, isCustomRate: false },
-      MYR: { code: 'MYR', name: '馬幣', symbol: 'RM', flag: '🇲🇾', per100: 176.0, isCustomRate: false },
-      CAD: { code: 'CAD', name: '加元', symbol: 'C$', flag: '🇨🇦', per100: 565.0, isCustomRate: false },
-      CHF: { code: 'CHF', name: '瑞郎', symbol: 'CHF', flag: '🇨🇭', per100: 885.0, isCustomRate: false },
-      HKD: { code: 'HKD', name: '港幣', symbol: 'HK$', flag: '🇭🇰', per100: 100.0, isCustomRate: false }
+    // 常用貨幣清單
+    const DEFAULT_RATES = {
+      HKD: 1.0,
+      JPY: 0.052,
+      TWD: 0.245,
+      SGD: 5.82,
+      KRW: 0.0058,
+      THB: 0.22,
+      EUR: 8.45,
+      GBP: 9.95,
+      USD: 7.78,
+      AUD: 5.15,
+      CNY: 1.08,
+      MOP: 0.97,
+      CAD: 5.75,
+      CHF: 8.85,
+      VND: 0.00031
     };
 
-    const CATEGORIES = [
-      { id: 'food', label: '食飯', icon: '🍽️', color: 'bg-orange-100 text-orange-700 border-orange-200', barColor: 'bg-orange-500' },
-      { id: 'transport', label: '租車/交通', icon: '🚗', color: 'bg-blue-100 text-blue-700 border-blue-200', barColor: 'bg-blue-500' },
-      { id: 'hotel', label: '酒店住宿', icon: '🏨', color: 'bg-purple-100 text-purple-700 border-purple-200', barColor: 'bg-purple-500' },
-      { id: 'shopping', label: '購物/手信', icon: '🛍️', color: 'bg-pink-100 text-pink-700 border-pink-200', barColor: 'bg-pink-500' },
-      { id: 'other', label: '門票/其他', icon: '🎡', color: 'bg-teal-100 text-teal-700 border-teal-200', barColor: 'bg-teal-500' }
-    ];
+    const DEFAULT_MEMBERS = ["我", "老公", "奶奶", "老爺", "叔仔"];
 
-    // ---------------------------------------------------------
-    // 3. 應用程式狀態 (State)
-    // ---------------------------------------------------------
-    let state = {
-      roomCode: 'JP2026',
-      tripName: '日本自駕遊 🚗',
-      selectedCurrency: 'JPY',
-      currencies: JSON.parse(JSON.stringify(DEFAULT_CURRENCIES)),
-      members: [
-        { id: 'm1', name: '我', avatar: '😎' },
-        { id: 'm2', name: '老公', avatar: '🚙' },
-        { id: 'm3', name: '阿媽', avatar: '👩' },
-        { id: 'm4', name: '老爺奶奶', avatar: '🧓' },
-        { id: 'm5', name: '叔仔', avatar: '🧑' }
-      ],
-      expenses: [
-        { id: 'e1', title: '租 7 人車 Alphard (5日連全保)', category: 'transport', amount: 78000, currency: 'JPY', paidBy: 'm2', splitWith: ['m1', 'm2', 'm3', 'm4', 'm5'] },
-        { id: 'e2', title: '炭火燒肉居酒屋晚餐', category: 'food', amount: 22500, currency: 'JPY', paidBy: 'm1', splitWith: ['m1', 'm2', 'm3', 'm4', 'm5'] },
-        { id: 'e3', title: '高速公路 ETC 過路費 + 入油', category: 'transport', amount: 9400, currency: 'JPY', paidBy: 'm2', splitWith: ['m1', 'm2', 'm3', 'm4', 'm5'] },
-        { id: 'e4', title: '超市買晴王提子、宵夜飲品', category: 'shopping', amount: 6800, currency: 'JPY', paidBy: 'm3', splitWith: ['m1', 'm2', 'm3', 'm4', 'm5'] }
-      ]
+    // 格式化房間 ID (已修正正規表達式錯誤)
+    const sanitizeRoomId = (raw) => {
+      return (raw || "OKINAWA2027").trim().toUpperCase().replace(/[.#$\[\]\/]/g, "-");
     };
 
-    // 新增開支 Modal 內部暫存狀態
-    let formState = {
-      category: 'food',
-      paidBy: 'm1',
-      splitWith: ['m1', 'm2', 'm3', 'm4', 'm5']
+    // 從網址參數讀取預設房號 (?room=XXXX)
+    const getInitialRoom = () => {
+      const params = new URLSearchParams(window.location.search);
+      const urlRoom = params.get("room");
+      if (urlRoom) return sanitizeRoomId(urlRoom);
+      const saved = localStorage.getItem("last_travel_room");
+      return saved ? sanitizeRoomId(saved) : "OKINAWA2027";
     };
 
-    let liveApiRatesCache = null;
-    let lastRateUpdateTime = null;
+    function App() {
+      // 房間切換狀態
+      const [roomId, setRoomId] = useState(getInitialRoom);
+      const [roomInput, setRoomInput] = useState(getInitialRoom);
+      const [syncStatus, setSyncStatus] = useState("connecting");
 
-    // Firebase 變數
-    let db = null;
-    let auth = null;
-    let currentUser = null;
-    let unsubscribeRoom = null;
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'hk-travel-splitter-pwa';
+      // 旅程雲端同步資料
+      const [tripName, setTripName] = useState("新旅程記帳 ✈️");
+      const [members, setMembers] = useState(DEFAULT_MEMBERS);
+      const [expenses, setExpenses] = useState([]);
+      const [customRates, setCustomRates] = useState({});
 
-    // ---------------------------------------------------------
-    // 4. 連線上網獲取國際即時匯率 (open.er-api.com)
-    // ---------------------------------------------------------
-    async function fetchLiveExchangeRates(showToastNotification = false) {
-      const refreshIcon = document.getElementById('refresh-icon');
-      if (refreshIcon) refreshIcon.classList.add('fa-spin');
+      // UI 狀態
+      const [activeTab, setActiveTab] = useState("expenses");
+      const [newMemberName, setNewMemberName] = useState("");
+      const [liveRates, setLiveRates] = useState(DEFAULT_RATES);
+      const [rateUpdatedText, setRateUpdatedText] = useState("載入中...");
+      const [newCurCode, setNewCurCode] = useState("");
+      const [newCurRate, setNewCurRate] = useState("");
 
-      try {
-        const res = await fetch('https://open.er-api.com/v6/latest/HKD');
-        if (!res.ok) throw new Error('Network failed');
-        const data = await res.json();
+      // 表單輸入
+      const [title, setTitle] = useState("");
+      const [amount, setAmount] = useState("");
+      const [currency, setCurrency] = useState("JPY");
+      const [payer, setPayer] = useState("我");
+      const [splitWith, setSplitWith] = useState(DEFAULT_MEMBERS);
+      const [category, setCategory] = useState("餐飲");
 
-        if (data && data.rates) {
-          liveApiRatesCache = data.rates;
-          Object.keys(state.currencies).forEach((code) => {
-            if (code === 'HKD') return;
-            if (!state.currencies[code].isCustomRate && data.rates[code]) {
-              const hkdPer100 = 100 / data.rates[code];
-              state.currencies[code].per100 = Number(hkdPer100.toPrecision(4));
+      // 合併即時匯率與房間自訂匯率
+      const rates = useMemo(() => {
+        return { ...liveRates, ...customRates };
+      }, [liveRates, customRates]);
+
+      // 1. 載入即時公開匯率 API
+      useEffect(() => {
+        fetch("https://open.er-api.com/v6/latest/HKD")
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.rates) {
+              const updated = {};
+              Object.keys(DEFAULT_RATES).forEach(cur => {
+                if (cur === "HKD") {
+                  updated[cur] = 1.0;
+                } else if (data.rates[cur]) {
+                  updated[cur] = Number((1 / data.rates[cur]).toFixed(5));
+                } else {
+                  updated[cur] = DEFAULT_RATES[cur];
+                }
+              });
+              setLiveRates(prev => ({ ...prev, ...updated }));
+              setRateUpdatedText(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
             }
+          })
+          .catch(() => {
+            setRateUpdatedText("基準匯率");
+          });
+      }, []);
+
+      // 2. 監聽當前 Firebase 房間數據
+      useEffect(() => {
+        setSyncStatus("connecting");
+        localStorage.setItem("last_travel_room", roomId);
+
+        const url = new URL(window.location);
+        url.searchParams.set("room", roomId);
+        window.history.replaceState({}, "", url);
+
+        const roomRef = db.ref(`rooms/${roomId}`);
+
+        const handleValue = (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+            setTripName(data.tripName || `${roomId} 旅程 ✈️`);
+            const loadedMembers = Array.isArray(data.members) && data.members.length > 0 ? data.members : DEFAULT_MEMBERS;
+            setMembers(loadedMembers);
+            setPayer(prev => loadedMembers.includes(prev) ? prev : loadedMembers[0]);
+            setSplitWith(prev => {
+              const valid = prev.filter(m => loadedMembers.includes(m));
+              return valid.length > 0 ? valid : loadedMembers;
+            });
+
+            if (data.expenses) {
+              const expList = Object.values(data.expenses).sort((a, b) => (b.id || 0) - (a.id || 0));
+              setExpenses(expList);
+            } else {
+              setExpenses([]);
+            }
+
+            setCustomRates(data.customRates || {});
+          } else {
+            const initialRoomData = {
+              tripName: `${roomId} 旅程 ✈️`,
+              members: DEFAULT_MEMBERS,
+              expenses: {},
+              customRates: {},
+              createdAt: Date.now()
+            };
+            roomRef.set(initialRoomData);
+          }
+          setSyncStatus("synced");
+        };
+
+        const handleError = (err) => {
+          console.error("Firebase error:", err);
+          setSyncStatus("error");
+        };
+
+        roomRef.on("value", handleValue, handleError);
+        return () => roomRef.off("value", handleValue);
+      }, [roomId]);
+
+      // 切換房間
+      const handleSwitchRoom = (e) => {
+        e.preventDefault();
+        const clean = sanitizeRoomId(roomInput);
+        if (!clean) return;
+        setRoomInput(clean);
+        setRoomId(clean);
+      };
+
+      // 更新雲端旅程名稱
+      const handleTripNameBlur = () => {
+        db.ref(`rooms/${roomId}/tripName`).set(tripName);
+      };
+
+      // 新增開支到雲端
+      const handleAddExpense = (e) => {
+        e.preventDefault();
+        if (!title || !amount || splitWith.length === 0) return;
+        const id = Date.now();
+        const newExp = {
+          id,
+          title,
+          amount: parseFloat(amount),
+          currency,
+          payer,
+          splitWith,
+          category,
+          date: new Date().toISOString().split("T")[0]
+        };
+        db.ref(`rooms/${roomId}/expenses/${id}`).set(newExp);
+        setTitle("");
+        setAmount("");
+      };
+
+      // 刪除雲端開支
+      const handleDeleteExpense = (id) => {
+        db.ref(`rooms/${roomId}/expenses/${id}`).remove();
+      };
+
+      // 新增成員到雲端
+      const handleAddMember = () => {
+        const name = newMemberName.trim();
+        if (!name || members.includes(name)) return;
+        const updated = [...members, name];
+        db.ref(`rooms/${roomId}/members`).set(updated);
+        setSplitWith(updated);
+        setNewMemberName("");
+      };
+
+      // 移除成員
+      const handleRemoveMember = (name) => {
+        if (members.length <= 2) return;
+        const updated = members.filter(x => x !== name);
+        db.ref(`rooms/${roomId}/members`).set(updated);
+      };
+
+      // 更新匯率並同步至房間
+      const handleRateChange = (cur, val) => {
+        const num = parseFloat(val);
+        if (isNaN(num) || num <= 0) return;
+        db.ref(`rooms/${roomId}/customRates/${cur}`).set(num);
+      };
+
+      // 新增自訂貨幣
+      const handleAddCustomCurrency = (e) => {
+        e.preventDefault();
+        const code = newCurCode.trim().toUpperCase();
+        const rateVal = parseFloat(newCurRate);
+        if (code.length !== 3 || isNaN(rateVal) || rateVal <= 0) return;
+        db.ref(`rooms/${roomId}/customRates/${code}`).set(rateVal);
+        setCurrency(code);
+        setNewCurCode("");
+        setNewCurRate("");
+      };
+
+      // 轉換為港幣
+      const toHKD = (amt, curr) => {
+        const r = rates[curr] || 1;
+        return amt * r;
+      };
+
+      // 總花費計算
+      const totalHKD = useMemo(() => {
+        return expenses.reduce((acc, exp) => acc + toHKD(Number(exp.amount), exp.currency), 0);
+      }, [expenses, rates]);
+
+      // 結算演算法
+      const settlement = useMemo(() => {
+        const balances = {};
+        members.forEach(m => balances[m] = 0);
+
+        expenses.forEach(exp => {
+          const hkdAmount = toHKD(Number(exp.amount), exp.currency);
+          const validSplits = (exp.splitWith || []).filter(p => balances[p] !== undefined);
+          if (validSplits.length === 0) return;
+
+          const share = hkdAmount / validSplits.length;
+
+          if (balances[exp.payer] !== undefined) {
+            balances[exp.payer] += hkdAmount;
+          }
+          validSplits.forEach(p => {
+            balances[p] -= share;
+          });
+        });
+
+        const debtors = [];
+        const creditors = [];
+
+        Object.keys(balances).forEach(m => {
+          const val = Math.round(balances[m]);
+          if (val < -1) debtors.push({ name: m, amount: -val });
+          else if (val > 1) creditors.push({ name: m, amount: val });
+        });
+
+        debtors.sort((a, b) => b.amount - a.amount);
+        creditors.sort((a, b) => b.amount - a.amount);
+
+        const transactions = [];
+        let i = 0, j = 0;
+        while (i < debtors.length && j < creditors.length) {
+          const deb = debtors[i];
+          const cred = creditors[j];
+          const settleAmt = Math.min(deb.amount, cred.amount);
+
+          transactions.push({
+            from: deb.name,
+            to: cred.name,
+            amount: Math.round(settleAmt)
           });
 
-          const now = new Date();
-          lastRateUpdateTime = now.toLocaleTimeString('zh-HK', { hour: '2-digit', minute: '2-digit' });
-          renderAll();
-          if (showToastNotification) {
-            showToast('⚡ 已更新最新國際即時匯率！');
-          }
-        }
-      } catch (err) {
-        const badge = document.getElementById('rate-status-badge');
-        if (badge) {
-          badge.innerHTML = `<i class="fa-solid fa-clock text-amber-300"></i><span>使用緊內置匯率 (可手動改唱錢價)</span>`;
-        }
-        if (showToastNotification) {
-          showToast('暫時無法連線匯率伺服器，已沿用目前匯率');
-        }
-      } finally {
-        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
-      }
-    }
+          deb.amount -= settleAmt;
+          cred.amount -= settleAmt;
 
-    // ---------------------------------------------------------
-    // 5. Firebase 雲端即時多人同步 (支援輸入同一個房號即同步)
-    // ---------------------------------------------------------
-    async function initCloudSync() {
-      try {
-        if (typeof __firebase_config === 'undefined' || !__firebase_config) {
-          updateCloudStatusUI(false);
-          return;
+          if (deb.amount === 0) i++;
+          if (cred.amount === 0) j++;
         }
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        auth = getAuth(app);
-        db = getFirestore(app);
 
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
+        return { balances, transactions };
+      }, [expenses, members, rates]);
+
+      const shareRoomLink = () => {
+        const shareUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(roomId)}`;
+        const msg = `✈️ 一齊用「${tripName}」旅行夾錢記帳！\n👉 直接撳連結入房（房號：${roomId}）：\n${shareUrl}`;
+        navigator.clipboard.writeText(msg);
+        alert(`已複製邀請連結！直接貼去 WhatsApp 群組，朋友一撳就會自動入房「${roomId}」📲`);
+      };
+
+      const copyToWhatsApp = () => {
+        let text = `✈️【${tripName}】結算清單 📊\n`;
+        text += `房號：${roomId} ｜ 總開支：HK$ ${Math.round(totalHKD).toLocaleString()}\n`;
+        text += `------------------------\n`;
+        text += `【過數指引 / FPS / PayMe】：\n`;
+        if (settlement.transactions.length === 0) {
+          text += `✅ 大家帳目已平衡，互不相欠！\n`;
         } else {
-          await signInAnonymously(auth);
+          settlement.transactions.forEach(t => {
+            text += `👉 ${t.from} 需過數 HK$ ${t.amount.toLocaleString()} 畀 ${t.to}\n`;
+          });
         }
+        text += `------------------------\n`;
+        text += `大家 check 下有冇問題！🍻`;
+        navigator.clipboard.writeText(text);
+        alert("已複製 WhatsApp 結算清單！可以直接貼去群組！📲");
+      };
 
-        onAuthStateChanged(auth, (user) => {
-          currentUser = user;
-          if (user) {
-            subscribeToRoom(state.roomCode);
-          }
-        });
-      } catch (e) {
-        console.warn('Cloud sync fallback to local/code mode:', e);
-        updateCloudStatusUI(false);
-      }
-    }
+      return (
+        <div className="max-w-md mx-auto min-h-screen bg-slate-50 flex flex-col shadow-xl pb-24">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-5 rounded-b-3xl shadow-md">
+            <div className="flex justify-between items-center mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs bg-white/20 px-2.5 py-1 rounded-full font-mono font-bold backdrop-blur-sm flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-400' : syncStatus === 'connecting' ? 'bg-amber-300 animate-ping' : 'bg-rose-500'}`}></span>
+                  房號: {roomId}
+                </span>
+                <button onClick={shareRoomLink} className="text-xs bg-emerald-500 hover:bg-emerald-400 text-white px-2.5 py-1 rounded-full font-bold shadow-sm transition">
+                  🔗 邀請入房
+                </button>
+              </div>
+              <span className="text-xs text-blue-100">匯率: {rateUpdatedText}</span>
+            </div>
+            <h1 className="text-2xl font-black tracking-tight mt-1">{tripName}</h1>
+            <div className="mt-4 flex justify-between items-end bg-white/10 p-3.5 rounded-2xl backdrop-blur-md">
+              <div>
+                <p className="text-xs text-blue-100">旅程總開支折合 (HKD)</p>
+                <p className="text-3xl font-extrabold tracking-tight">HK$ {Math.round(totalHKD).toLocaleString()}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-blue-100">雲端同步成員</p>
+                <p className="text-base font-bold">{members.length} 人</p>
+              </div>
+            </div>
+          </div>
 
-    function updateCloudStatusUI(isConnected) {
-      const dot = document.getElementById('sync-dot');
-      const pill = document.getElementById('cloud-status-pill');
-      if (isConnected) {
-        if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
-        if (pill) {
-          pill.className = 'text-[11px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold';
-          pill.textContent = '🟢 雲端即時同步已連線';
-        }
-      } else {
-        if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-300';
-        if (pill) {
-          pill.className = 'text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold';
-          pill.textContent = '📲 支援同步碼 / 連結分享';
-        }
-      }
-    }
+          {syncStatus === "error" && (
+            <div className="mx-4 mt-3 p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700">
+              ⚠️ <strong>雲端資料庫讀取受阻：</strong>請確認 Firebase Realtime Database 的 Rules 已設為 <code>.read: true, .write: true</code>。
+            </div>
+          )}
 
-    function subscribeToRoom(roomCode) {
-      if (!db || !currentUser) return;
-      if (unsubscribeRoom) unsubscribeRoom();
+          <div className="flex bg-white mx-4 mt-3 p-1 rounded-2xl shadow-sm border border-slate-200">
+            <button onClick={() => setActiveTab("expenses")} className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${activeTab === 'expenses' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600'}`}>
+              記帳明細 📝
+            </button>
+            <button onClick={() => setActiveTab("settle")} className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${activeTab === 'settle' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600'}`}>
+              結算夾錢 💰
+            </button>
+            <button onClick={() => setActiveTab("rates")} className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${activeTab === 'rates' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600'}`}>
+              換房/設定 ⚙️
+            </button>
+          </div>
 
-      const cleanCode = roomCode.trim().toUpperCase();
-      const roomDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'tripRooms', cleanCode);
-
-      unsubscribeRoom = onSnapshot(
-        roomDocRef,
-        (snapshot) => {
-          updateCloudStatusUI(true);
-          if (snapshot.exists()) {
-            const data = snapshot.data();
-            if (data.tripName) state.tripName = data.tripName;
-            if (data.selectedCurrency) state.selectedCurrency = data.selectedCurrency;
-            if (data.currenciesJson) {
-              try {
-                const parsedCur = JSON.parse(data.currenciesJson);
-                state.currencies = { ...state.currencies, ...parsedCur };
-              } catch (e) {}
-            }
-            if (data.membersJson) {
-              try { state.members = JSON.parse(data.membersJson); } catch (e) {}
-            }
-            if (data.expensesJson) {
-              try { state.expenses = JSON.parse(data.expensesJson); } catch (e) {}
-            }
-            renderAll();
-          } else {
-            // 如果係新房間，將目前狀態寫入雲端
-            pushStateToCloud();
-          }
-        },
-        (err) => {
-          console.warn('Firestore snapshot error:', err);
-          updateCloudStatusUI(false);
-        }
-      );
-    }
-
-    async function pushStateToCloud() {
-      renderAll();
-      if (!db || !currentUser) return;
-      try {
-        const cleanCode = state.roomCode.trim().toUpperCase();
-        const roomDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'tripRooms', cleanCode);
-        await setDoc(roomDocRef, {
-          roomCode: cleanCode,
-          tripName: state.tripName,
-          selectedCurrency: state.selectedCurrency,
-          currenciesJson: JSON.stringify(state.currencies),
-          membersJson: JSON.stringify(state.members),
-          expensesJson: JSON.stringify(state.expenses),
-          updatedAt: Date.now()
-        });
-      } catch (e) {
-        console.warn('Save to cloud skipped:', e);
-      }
-    }
-
-    // ---------------------------------------------------------
-    // 6. 數值計算與最簡化過數演算法
-    // ---------------------------------------------------------
-    function toHKD(amount, currencyCode) {
-      if (currencyCode === 'HKD') return Number(amount);
-      const cur = state.currencies[currencyCode];
-      if (cur && cur.per100 > 0) {
-        return Number(amount) * (cur.per100 / 100);
-      }
-      return Number(amount);
-    }
-
-    function calculateSummary() {
-      let totalHKD = 0;
-      let totalForeign = 0;
-      const paidByMember = {};
-      const shareByMember = {};
-      const categoryTotalsHKD = {};
-
-      state.members.forEach((m) => {
-        paidByMember[m.id] = 0;
-        shareByMember[m.id] = 0;
-      });
-      CATEGORIES.forEach((c) => {
-        categoryTotalsHKD[c.id] = 0;
-      });
-
-      const activeCur = state.currencies[state.selectedCurrency] || state.currencies.JPY;
-
-      state.expenses.forEach((exp) => {
-        const hkdVal = toHKD(exp.amount, exp.currency);
-        totalHKD += hkdVal;
-
-        if (exp.currency === state.selectedCurrency) {
-          totalForeign += Number(exp.amount);
-        } else if (activeCur.per100 > 0) {
-          totalForeign += hkdVal / (activeCur.per100 / 100);
-        }
-
-        if (paidByMember[exp.paidBy] !== undefined) {
-          paidByMember[exp.paidBy] += hkdVal;
-        }
-
-        const validSplitters = (exp.splitWith || []).filter((id) => shareByMember[id] !== undefined);
-        const count = validSplitters.length || 1;
-        const eachShare = hkdVal / count;
-        validSplitters.forEach((id) => {
-          shareByMember[id] += eachShare;
-        });
-
-        if (categoryTotalsHKD[exp.category] !== undefined) {
-          categoryTotalsHKD[exp.category] += hkdVal;
-        } else {
-          categoryTotalsHKD.other += hkdVal;
-        }
-      });
-
-      const balances = state.members.map((m) => {
-        const paid = paidByMember[m.id] || 0;
-        const share = shareByMember[m.id] || 0;
-        return { ...m, paid, share, net: paid - share };
-      });
-
-      const debtors = balances
-        .filter((b) => b.net < -0.05)
-        .map((b) => ({ ...b, amount: Math.abs(b.net) }))
-        .sort((a, b) => b.amount - a.amount);
-
-      const creditors = balances
-        .filter((b) => b.net > 0.05)
-        .map((b) => ({ ...b, amount: b.net }))
-        .sort((a, b) => b.amount - a.amount);
-
-      const transactions = [];
-      let i = 0;
-      let j = 0;
-      while (i < debtors.length && j < creditors.length) {
-        const debtor = debtors[i];
-        const creditor = creditors[j];
-        const settleAmt = Math.min(debtor.amount, creditor.amount);
-        if (settleAmt > 0.5) {
-          transactions.push({ from: debtor, to: creditor, amountHKD: settleAmt });
-        }
-        debtor.amount -= settleAmt;
-        creditor.amount -= settleAmt;
-        if (debtor.amount < 0.05) i++;
-        if (creditor.amount < 0.05) j++;
-      }
-
-      return { totalHKD, totalForeign, balances, transactions, categoryTotalsHKD };
-    }
-
-    // ---------------------------------------------------------
-    // 7. 畫面渲染 (Render UI)
-    // ---------------------------------------------------------
-    function renderAll() {
-      const curObj = state.currencies[state.selectedCurrency] || state.currencies.JPY;
-      const summary = calculateSummary();
-
-      // Header 資訊
-      document.getElementById('trip-name-display').textContent = state.tripName;
-      document.getElementById('room-code-badge').textContent = state.roomCode;
-      document.getElementById('room-code-input').value = state.roomCode;
-
-      // 匯率狀態列
-      const rateBadge = document.getElementById('rate-status-badge');
-      if (curObj.isCustomRate) {
-        rateBadge.innerHTML = `<span class="bg-amber-400/25 text-amber-200 border border-amber-300/30 px-2 py-0.5 rounded-md font-bold">🔒 已鎖定自訂唱錢匯率</span>`;
-      } else if (lastRateUpdateTime) {
-        rateBadge.innerHTML = `<span class="bg-emerald-950/35 text-emerald-200 px-2 py-0.5 rounded-md font-semibold">🟢 國際即時匯率 (${lastRateUpdateTime} 更新)</span>`;
-      } else {
-        rateBadge.innerHTML = `<span>💱 自動匯率換算中</span>`;
-      }
-
-      document.getElementById('header-rate-text').textContent =
-        state.selectedCurrency === 'HKD'
-          ? '港幣 HKD 計數'
-          : `100 ${state.selectedCurrency} = ${curObj.per100} HKD`;
-
-      // 總開支與人均
-      document.getElementById('total-hkd-display').textContent =
-        `HK$ ${summary.totalHKD.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-
-      const foreignEl = document.getElementById('total-foreign-display');
-      if (state.selectedCurrency === 'HKD') {
-        foreignEl.textContent = '全部外幣已自動折算為港幣';
-      } else {
-        foreignEl.textContent = `折合約 ${curObj.flag} ${curObj.symbol}${summary.totalForeign.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${curObj.name})`;
-      }
-
-      document.getElementById('per-person-badge').textContent = `人均 (${state.members.length}人)`;
-      const perPerson = summary.totalHKD / (state.members.length || 1);
-      document.getElementById('per-person-hkd').textContent = `HK$ ${perPerson.toFixed(0)}`;
-
-      // Header 成員橫向膠囊
-      const headerMembersEl = document.getElementById('header-members-list');
-      headerMembersEl.innerHTML = state.members
-        .map(
-          (m) => `
-          <div onclick="switchTab('settings')" class="flex items-center gap-1 bg-white/15 hover:bg-white/25 cursor-pointer px-2.5 py-1 rounded-full text-xs font-bold shrink-0 transition">
-            <span>${m.avatar}</span>
-            <span>${m.name}</span>
-          </div>`
-        )
-        .join('');
-
-      // TAB 1: 開支明細列表
-      document.getElementById('expense-count').textContent = state.expenses.length;
-      const expContainer = document.getElementById('expenses-container');
-      if (state.expenses.length === 0) {
-        expContainer.innerHTML = `
-          <div class="bg-white rounded-2xl p-8 text-center border border-slate-100 shadow-xs">
-            <div class="text-4xl mb-2">🧾</div>
-            <p class="text-slate-700 font-extrabold text-sm">暫時未有開支紀錄</p>
-            <p class="text-slate-400 text-xs mt-1">撳下面「＋ 記一筆」開始同旅伴夾錢啦！</p>
-          </div>`;
-      } else {
-        expContainer.innerHTML = state.expenses
-          .map((exp) => {
-            const cat = CATEGORIES.find((c) => c.id === exp.category) || CATEGORIES[4];
-            const payer = state.members.find((m) => m.id === exp.paidBy) || { name: '成員', avatar: '👤' };
-            const hkdVal = toHKD(exp.amount, exp.currency);
-            const expCur = state.currencies[exp.currency] || { symbol: exp.currency };
-            const isAll = (exp.splitWith || []).length >= state.members.length;
-
-            return `
-              <div class="bg-white rounded-2xl p-3.5 shadow-xs border border-slate-100 flex items-center justify-between hover:border-teal-200 transition">
-                <div class="flex items-start gap-3 min-w-0">
-                  <div class="w-10 h-10 rounded-2xl flex items-center justify-center text-lg shrink-0 border ${cat.color}">
-                    ${cat.icon}
+          <div className="p-4 flex-1">
+            {activeTab === "expenses" && (
+              <div className="space-y-4">
+                <form onSubmit={handleAddExpense} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800 text-sm">➕ 記低一筆新開支</h3>
+                    <select value={category} onChange={e => setCategory(e.target.value)} className="text-xs bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 font-medium">
+                      <option value="餐飲">🍱 餐飲美食</option>
+                      <option value="交通">🚗 交通租車</option>
+                      <option value="住宿">🏨 住宿酒店</option>
+                      <option value="門票">🎟️ 門票活動</option>
+                      <option value="購物">🛍️ 購物手信</option>
+                      <option value="機票">✈️ 機票保險</option>
+                      <option value="雜項">💡 其他雜費</option>
+                    </select>
                   </div>
-                  <div class="min-w-0">
-                    <h3 class="font-extrabold text-slate-800 text-sm truncate">${escapeHtml(exp.title)}</h3>
-                    <div class="flex flex-wrap items-center gap-1.5 mt-1">
-                      <span class="inline-flex items-center gap-1 bg-teal-50 text-teal-700 px-2 py-0.5 rounded-md text-[11px] font-bold">
-                        ${payer.avatar} ${escapeHtml(payer.name)} 俾先
-                      </span>
-                      <span class="text-[11px] text-slate-400 font-medium">
-                        • ${isAll ? `全部 ${state.members.length} 人夾` : `${(exp.splitWith || []).length} 人夾`}
-                      </span>
+                  <input type="text" placeholder="開支項目 (例如: 居酒屋消夜)" value={title} onChange={e => setTitle(e.target.value)} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input type="number" step="any" placeholder="金額" value={amount} onChange={e => setAmount(e.target.value)} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                    </div>
+                    <select value={currency} onChange={e => setCurrency(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-blue-600 focus:outline-none">
+                      {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="text-xs">
+                    <label className="text-slate-500 font-medium">邊個墊支先？</label>
+                    <div className="flex gap-1.5 overflow-x-auto py-1.5 scrollbar-none">
+                      {members.map(m => (
+                        <button key={m} type="button" onClick={() => setPayer(m)} className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${payer === m ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                          {m}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0 ml-2">
-                  <div class="text-right">
-                    <div class="font-black text-slate-800 text-sm">HK$ ${hkdVal.toFixed(0)}</div>
-                    ${
-                      exp.currency !== 'HKD'
-                        ? `<div class="text-[11px] text-slate-400 font-semibold">${expCur.symbol}${Number(exp.amount).toLocaleString()} (${exp.currency})</div>`
-                        : ''
-                    }
+                  <div className="text-xs">
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-slate-500 font-medium">邊個夾份？</label>
+                      <button type="button" onClick={() => setSplitWith(splitWith.length === members.length ? [payer] : members)} className="text-blue-600 font-bold hover:underline">
+                        {splitWith.length === members.length ? '淨係自己' : '全部人夾'}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {members.map(m => {
+                        const isSelected = splitWith.includes(m);
+                        return (
+                          <button key={m} type="button" onClick={() => {
+                            if (isSelected) {
+                              if (splitWith.length > 1) setSplitWith(splitWith.filter(x => x !== m));
+                            } else {
+                              setSplitWith([...splitWith, m]);
+                            }
+                          }} className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${isSelected ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'bg-white border-slate-200 text-slate-400'}`}>
+                            {isSelected ? '✓ ' : ''}{m}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <button onclick="deleteExpense('${exp.id}')" class="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg transition" title="刪除">
-                    <i class="fa-solid fa-trash-can text-xs"></i>
+                  <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2.5 rounded-xl shadow-md hover:bg-blue-700 transition">
+                    同步加入開支 ☁️
                   </button>
-                </div>
-              </div>`;
-          })
-          .join('');
-      }
+                </form>
 
-      // TAB 2: 結算夾錢清單
-      const txEl = document.getElementById('settlement-transactions');
-      if (summary.transactions.length === 0) {
-        txEl.innerHTML = `
-          <div class="bg-emerald-50 text-emerald-700 rounded-xl p-4 text-center text-xs font-extrabold">
-            🎉 大家目前數目已經完全平晒，唔使過數！
-          </div>`;
-      } else {
-        txEl.innerHTML = summary.transactions
-          .map(
-            (t) => `
-            <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex items-center justify-between">
-              <div class="flex items-center gap-1.5 text-sm">
-                <span class="font-extrabold text-slate-800">${t.from.avatar} ${escapeHtml(t.from.name)}</span>
-                <span class="text-[11px] text-slate-400 px-1 font-bold">過數俾 <i class="fa-solid fa-arrow-right text-teal-600"></i></span>
-                <span class="font-extrabold text-teal-700">${t.to.avatar} ${escapeHtml(t.to.name)}</span>
-              </div>
-              <div class="bg-teal-600 text-white px-3 py-1 rounded-lg font-black text-sm shadow-xs">
-                HK$ ${t.amountHKD.toFixed(0)}
-              </div>
-            </div>`
-          )
-          .join('');
-      }
-
-      // 個人墊支明細
-      document.getElementById('member-balances-list').innerHTML = summary.balances
-        .map((b) => {
-          const isPos = b.net >= 0;
-          const badgeClass =
-            Math.abs(b.net) < 1
-              ? 'bg-slate-100 text-slate-500'
-              : isPos
-              ? 'bg-emerald-50 text-emerald-700'
-              : 'bg-rose-50 text-rose-600';
-          const badgeText =
-            Math.abs(b.net) < 1
-              ? '已平數'
-              : isPos
-              ? `應收返 +HK$${b.net.toFixed(0)}`
-              : `要俾返 -HK$${Math.abs(b.net).toFixed(0)}`;
-
-          return `
-            <div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
-              <div class="flex items-center gap-2.5">
-                <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-base">${b.avatar}</div>
-                <div>
-                  <div class="font-extrabold text-slate-800 text-sm">${escapeHtml(b.name)}</div>
-                  <div class="text-[11px] text-slate-400 font-medium">已墊支 HK$${b.paid.toFixed(0)} ｜ 應分攤 HK$${b.share.toFixed(0)}</div>
+                <div className="space-y-2">
+                  <h3 className="font-bold text-slate-700 text-sm flex justify-between items-center px-1">
+                    <span>雲端開支明細</span>
+                    <span className="text-xs text-slate-400 font-normal">{expenses.length} 筆項目</span>
+                  </h3>
+                  {expenses.length === 0 ? (
+                    <div className="bg-white p-8 rounded-2xl border border-dashed border-slate-300 text-center text-xs text-slate-400">
+                      呢個房間暫時未有開支記錄，喺上面入第一筆數啦！✍️
+                    </div>
+                  ) : (
+                    expenses.map(exp => (
+                      <div key={exp.id} className="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
+                        <div className="flex-1 mr-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">{exp.category}</span>
+                            <span className="font-bold text-slate-800 text-sm">{exp.title}</span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">
+                            <span className="font-semibold text-blue-600">{exp.payer}</span> 墊支 • {(exp.splitWith || []).length}人分攤 ({(exp.splitWith || []).join(", ")})
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-extrabold text-slate-800 text-sm">{exp.currency} {Number(exp.amount).toLocaleString()}</p>
+                          {exp.currency !== "HKD" && <p className="text-xs text-slate-400">≈ HK$ {Math.round(toHKD(exp.amount, exp.currency)).toLocaleString()}</p>}
+                          <button onClick={() => handleDeleteExpense(exp.id)} className="text-xs text-rose-400 hover:text-rose-600 mt-0.5 block ml-auto">刪除</button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
-              <div class="text-xs font-black px-2.5 py-1 rounded-lg ${badgeClass}">${badgeText}</div>
-            </div>`;
-        })
-        .join('');
+            )}
 
-      // 分類統計條
-      document.getElementById('category-stats-list').innerHTML = CATEGORIES.map((cat) => {
-        const catHKD = summary.categoryTotalsHKD[cat.id] || 0;
-        const pct = summary.totalHKD > 0 ? Math.round((catHKD / summary.totalHKD) * 100) : 0;
-        return `
-          <div>
-            <div class="flex items-center justify-between text-xs mb-1">
-              <span class="font-extrabold text-slate-700">${cat.icon} ${cat.label}</span>
-              <span class="font-black text-slate-800">HK$ ${catHKD.toFixed(0)} <span class="text-slate-400 font-normal">(${pct}%)</span></span>
-            </div>
-            <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div class="h-full rounded-full ${cat.barColor}" style="width: ${pct}%"></div>
-            </div>
-          </div>`;
-      }).join('');
-
-      // TAB 3: 貨幣格仔與匯率微調器
-      document.getElementById('currency-grid').innerHTML = Object.values(state.currencies)
-        .map((c) => {
-          const active = c.code === state.selectedCurrency;
-          return `
-            <button onclick="selectMainCurrency('${c.code}')" class="py-2 px-2.5 rounded-xl text-left border transition flex flex-col justify-between ${
-              active
-                ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-            }">
-              <div class="flex items-center justify-between w-full">
-                <span class="text-xs font-black">${c.flag} ${c.code}</span>
-                ${c.isCustomRate ? `<i class="fa-solid fa-lock text-[10px] ${active ? 'text-amber-200' : 'text-amber-500'}"></i>` : ''}
+            {activeTab === "settle" && (
+              <div className="space-y-4">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-bold text-slate-800 text-sm">⚡ 自動簡化結算 (誰給誰錢)</h3>
+                    <button onClick={copyToWhatsApp} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-xl font-bold flex items-center gap-1 shadow hover:bg-emerald-700">
+                      複製 WhatsApp 清單
+                    </button>
+                  </div>
+                  {settlement.transactions.length === 0 ? (
+                    <div className="text-center py-6 text-slate-400 text-xs">🎉 目前大家收支平衡，互不相欠！</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {settlement.transactions.map((t, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-700 text-sm">{t.from}</span>
+                            <span className="text-xs text-slate-400">➡️ 過數畀</span>
+                            <span className="font-bold text-blue-600 text-sm">{t.to}</span>
+                          </div>
+                          <span className="font-black text-rose-600 text-sm">HK$ {t.amount.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                  <h3 className="font-bold text-slate-800 text-sm mb-3">個人墊支與應付分析</h3>
+                  <div className="space-y-2">
+                    {members.map(m => {
+                      const net = Math.round(settlement.balances[m] || 0);
+                      const isPositive = net > 0;
+                      return (
+                        <div key={m} className="flex justify-between items-center text-xs py-1.5 border-b border-slate-100 last:border-none">
+                          <span className="font-bold text-slate-700">{m}</span>
+                          <span className={`font-bold ${net === 0 ? 'text-slate-400' : isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {net === 0 ? '收支平衡' : isPositive ? `應收回 HK$ ${net.toLocaleString()}` : `應支付 HK$ ${Math.abs(net).toLocaleString()}`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div class="text-[11px] truncate mt-0.5 font-medium ${active ? 'text-teal-100' : 'text-slate-400'}">${escapeHtml(c.name)}</div>
-            </button>`;
-        })
-        .join('');
+            )}
 
-      const rateBox = document.getElementById('rate-editor-box');
-      if (state.selectedCurrency === 'HKD') {
-        rateBox.classList.add('hidden');
-      } else {
-        rateBox.classList.remove('hidden');
-        document.getElementById('rate-editor-label').textContent = `每 100 ${curObj.code} (${curObj.name}) 兌港幣：`;
-        document.getElementById('manual-rate-input').value = curObj.per100;
-        const lockStatus = document.getElementById('rate-lock-status');
-        if (curObj.isCustomRate) {
-          lockStatus.innerHTML = `
-            <span class="text-amber-600 font-bold">🔒 用緊你自訂嘅唱錢匯率</span>
-            <button onclick="unlockLiveRate('${curObj.code}')" class="text-teal-600 font-extrabold hover:underline">還原做即時市場匯率</button>`;
-        } else {
-          lockStatus.innerHTML = `<span>💡 直接改上面個數字，即可鎖定你喺找換店唱錢嘅實際匯率！</span>`;
-        }
-      }
+            {activeTab === "rates" && (
+              <div className="space-y-4">
+                <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-4 rounded-2xl shadow-sm border border-blue-200 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-bold text-blue-900 text-sm">🚪 切換或開設新 Trip 房間</h3>
+                    <span className="text-xs text-blue-600 font-bold">一房一旅程</span>
+                  </div>
+                  <form onSubmit={handleSwitchRoom} className="flex gap-2">
+                    <input type="text" placeholder="輸入房號 (例如: TOKYO2027)" value={roomInput} onChange={e => setRoomInput(e.target.value.toUpperCase())} className="flex-1 text-sm bg-white border border-blue-300 rounded-xl px-3 py-2 font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <button type="submit" className="bg-blue-600 text-white text-xs font-bold px-4 rounded-xl shadow hover:bg-blue-700">進入房間</button>
+                  </form>
+                </div>
 
-      // 設定頁成員名單
-      document.getElementById('settings-members-list').innerHTML = state.members
-        .map(
-          (m) => `
-          <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">
-            <div class="flex items-center gap-2 text-sm font-extrabold text-slate-700">
-              <span>${m.avatar}</span>
-              <span>${escapeHtml(m.name)}</span>
-            </div>
-            <button onclick="removeMember('${m.id}')" class="text-slate-400 hover:text-rose-500 p-1">
-              <i class="fa-solid fa-trash-can text-xs"></i>
-            </button>
-          </div>`
-        )
-        .join('');
-    }
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-2">
+                  <h3 className="font-bold text-slate-800 text-sm">當前旅程名稱 (改完自動同步)</h3>
+                  <input type="text" value={tripName} onChange={e => setTripName(e.target.value)} onBlur={handleTripNameBlur} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold" />
+                </div>
 
-    function escapeHtml(str) {
-      return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+                  <h3 className="font-bold text-slate-800 text-sm">房間成員 ({members.length}人)</h3>
+                  <div className="flex gap-2">
+                    <input type="text" placeholder="新增成員名字" value={newMemberName} onChange={e => setNewMemberName(e.target.value)} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2" />
+                    <button onClick={handleAddMember} className="bg-blue-600 text-white text-xs font-bold px-4 rounded-xl">新增</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {members.map(m => (
+                      <span key={m} className="bg-slate-100 text-slate-700 text-xs px-3 py-1 rounded-lg font-medium flex items-center gap-1.5">
+                        {m}
+                        {members.length > 2 && <button onClick={() => handleRemoveMember(m)} className="text-slate-400 hover:text-rose-500 font-bold">×</button>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
 
-    // ---------------------------------------------------------
-    // 8. 互動操作 Functions (掛載到 window 供 HTML 調用)
-    // ---------------------------------------------------------
-    window.switchTab = function (tabName) {
-      ['expenses', 'settle', 'settings'].forEach((t) => {
-        document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tabName);
-        const navBtn = document.getElementById(`nav-${t}`);
-        if (navBtn) {
-          navBtn.className =
-            t === tabName
-              ? 'flex flex-col items-center gap-1 py-1 px-3 text-teal-600 font-extrabold transition'
-              : 'flex flex-col items-center gap-1 py-1 px-3 text-slate-400 font-bold transition';
-        }
-      });
-    };
-
-    window.openModal = function (id) {
-      const el = document.getElementById(id);
-      if (el) {
-        el.classList.remove('hidden');
-        el.classList.add('flex');
-      }
-    };
-
-    window.closeModal = function (id) {
-      const el = document.getElementById(id);
-      if (el) {
-        el.classList.add('hidden');
-        el.classList.remove('flex');
-      }
-    };
-
-    window.showToast = function (msg) {
-      const toast = document.getElementById('toast');
-      document.getElementById('toast-text').textContent = msg;
-      toast.classList.remove('hidden');
-      toast.classList.add('flex');
-      clearTimeout(window._toastTimer);
-      window._toastTimer = setTimeout(() => {
-        toast.classList.add('hidden');
-        toast.classList.remove('flex');
-      }, 2800);
-    };
-
-    window.promptEditTripName = function () {
-      const current = state.tripName;
-      const input = document.createElement('input');
-      const display = document.getElementById('trip-name-display');
-      const newName = window.prompt ? null : null; // 遵從無原生 alert/prompt 規範，直接切換為內聯編輯
-      display.innerHTML = `<input id="inline-trip-input" type="text" value="${escapeHtml(current)}" class="bg-white/20 text-white px-2.5 py-0.5 rounded-lg text-base font-black w-44 focus:outline-none focus:ring-2 focus:ring-white" />`;
-      const inlineInput = document.getElementById('inline-trip-input');
-      inlineInput.focus();
-      inlineInput.select();
-      const saveName = () => {
-        const val = inlineInput.value.trim();
-        if (val) state.tripName = val;
-        pushStateToCloud();
-      };
-      inlineInput.onblur = saveName;
-      inlineInput.onkeydown = (e) => {
-        if (e.key === 'Enter') saveName();
-      };
-    };
-
-    // 開啟「記一筆」Modal
-    window.openAddExpenseModal = function () {
-      formState.category = 'food';
-      formState.paidBy = state.members[0]?.id || 'm1';
-      formState.splitWith = state.members.map((m) => m.id);
-
-      document.getElementById('exp-title-input').value = '';
-      document.getElementById('exp-amount-input').value = '';
-      document.getElementById('exp-hkd-preview').classList.add('hidden');
-
-      // 填充貨幣下拉選單
-      const curSelect = document.getElementById('exp-currency-select');
-      curSelect.innerHTML = Object.values(state.currencies)
-        .map(
-          (c) =>
-            `<option value="${c.code}" ${c.code === state.selectedCurrency ? 'selected' : ''}>${c.flag} ${c.code} (${escapeHtml(c.name)})</option>`
-        )
-        .join('');
-
-      renderModalFormSelectors();
-      openModal('add-expense-modal');
-    };
-
-    function renderModalFormSelectors() {
-      // 分類掣
-      document.getElementById('exp-category-grid').innerHTML = CATEGORIES.map((c) => {
-        const active = formState.category === c.id;
-        return `
-          <button type="button" onclick="selectFormCategory('${c.id}')" class="flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-xs font-extrabold transition ${
-            active
-              ? 'bg-teal-50 border-teal-500 text-teal-800 ring-2 ring-teal-500/20'
-              : 'bg-slate-50 border-slate-200 text-slate-500'
-          }">
-            <span class="text-lg mb-0.5">${c.icon}</span>
-            <span class="text-[10px]">${c.label}</span>
-          </button>`;
-      }).join('');
-
-      // 邊個俾錢先
-      document.getElementById('exp-payer-grid').innerHTML = state.members
-        .map((m) => {
-          const active = formState.paidBy === m.id;
-          return `
-            <button type="button" onclick="selectFormPayer('${m.id}')" class="py-2 px-2.5 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 transition ${
-              active
-                ? 'bg-teal-600 border-teal-600 text-white shadow-xs'
-                : 'bg-slate-50 border-slate-200 text-slate-700'
-            }">
-              <span>${m.avatar}</span>
-              <span class="truncate">${escapeHtml(m.name)}</span>
-            </button>`;
-        })
-        .join('');
-
-      // 邊個夾份
-      document.getElementById('exp-split-grid').innerHTML = state.members
-        .map((m) => {
-          const checked = formState.splitWith.includes(m.id);
-          return `
-            <button type="button" onclick="toggleFormSplitter('${m.id}')" class="py-2 px-3 rounded-xl border text-xs font-extrabold flex items-center justify-between transition ${
-              checked
-                ? 'bg-emerald-50 border-emerald-400 text-emerald-800'
-                : 'bg-slate-50 border-slate-200 text-slate-400'
-            }">
-              <span class="flex items-center gap-1.5 truncate"><span>${m.avatar}</span> ${escapeHtml(m.name)}</span>
-              <span class="w-4 h-4 rounded flex items-center justify-center ${
-                checked ? 'bg-emerald-600 text-white' : 'border border-slate-300'
-              }">
-                ${checked ? '<i class="fa-solid fa-check text-[10px]"></i>' : ''}
-              </span>
-            </button>`;
-        })
-        .join('');
-    }
-
-    window.setQuickTag = function (tag) {
-      document.getElementById('exp-title-input').value = tag;
-    };
-
-    window.selectFormCategory = function (catId) {
-      formState.category = catId;
-      renderModalFormSelectors();
-    };
-
-    window.selectFormPayer = function (memberId) {
-      formState.paidBy = memberId;
-      renderModalFormSelectors();
-    };
-
-    window.toggleFormSplitter = function (memberId) {
-      if (formState.splitWith.includes(memberId)) {
-        if (formState.splitWith.length <= 1) return;
-        formState.splitWith = formState.splitWith.filter((id) => id !== memberId);
-      } else {
-        formState.splitWith.push(memberId);
-      }
-      renderModalFormSelectors();
-    };
-
-    window.selectAllSplitMembers = function () {
-      formState.splitWith = state.members.map((m) => m.id);
-      renderModalFormSelectors();
-    };
-
-    window.updateModalHKDPreview = function () {
-      const amt = Number(document.getElementById('exp-amount-input').value);
-      const cur = document.getElementById('exp-currency-select').value;
-      const previewEl = document.getElementById('exp-hkd-preview');
-      if (amt > 0 && cur !== 'HKD') {
-        const hkd = toHKD(amt, cur);
-        const rate = state.currencies[cur]?.per100 || 100;
-        previewEl.textContent = `🔄 按匯率 (100 ${cur} = ${rate} HKD) 自動折合：約 HK$ ${hkd.toFixed(1)}`;
-        previewEl.classList.remove('hidden');
-      } else {
-        previewEl.classList.add('hidden');
-      }
-    };
-
-    window.saveNewExpense = function () {
-      const title = document.getElementById('exp-title-input').value.trim();
-      const amount = Number(document.getElementById('exp-amount-input').value);
-      const currency = document.getElementById('exp-currency-select').value;
-
-      if (!title || !amount || amount <= 0) {
-        showToast('請輸入消費項目名稱同埋有效金額！');
-        return;
-      }
-
-      state.expenses.unshift({
-        id: 'e_' + Date.now(),
-        title,
-        category: formState.category,
-        amount,
-        currency,
-        paidBy: formState.paidBy,
-        splitWith: [...formState.splitWith]
-      });
-
-      closeModal('add-expense-modal');
-      pushStateToCloud();
-      showToast('✅ 已記低一筆新開支！');
-    };
-
-    window.deleteExpense = function (id) {
-      state.expenses = state.expenses.filter((e) => e.id !== id);
-      pushStateToCloud();
-      showToast('已刪除該筆紀錄');
-    };
-
-    window.clearAllExpenses = function () {
-      state.expenses = [];
-      pushStateToCloud();
-      switchTab('expenses');
-      showToast('已清空示範帳目，可以開始記新旅程！');
-    };
-
-    // 匯率與自訂外幣操作
-    window.selectMainCurrency = function (code) {
-      state.selectedCurrency = code;
-      pushStateToCloud();
-    };
-
-    window.handleManualRateChange = function (val) {
-      const num = Number(val);
-      if (num > 0) {
-        state.currencies[state.selectedCurrency].per100 = num;
-        state.currencies[state.selectedCurrency].isCustomRate = true;
-        pushStateToCloud();
-        showToast(`🔒 已鎖定 ${state.selectedCurrency} 自訂唱錢匯率！`);
-      }
-    };
-
-    window.unlockLiveRate = function (code) {
-      if (liveApiRatesCache && liveApiRatesCache[code]) {
-        state.currencies[code].per100 = Number((100 / liveApiRatesCache[code]).toPrecision(4));
-        state.currencies[code].isCustomRate = false;
-        pushStateToCloud();
-        showToast(`已還原 ${code} 為國際即時匯率！`);
-      } else {
-        state.currencies[code].isCustomRate = false;
-        fetchLiveExchangeRates(true);
-      }
-    };
-
-    window.autoFillCustomCurrencyRate = function (val) {
-      const code = val.trim().toUpperCase();
-      if (liveApiRatesCache && liveApiRatesCache[code]) {
-        const liveRate = Number((100 / liveApiRatesCache[code]).toPrecision(4));
-        document.getElementById('custom-cur-rate').value = liveRate;
-      }
-    };
-
-    window.addCustomCurrency = function () {
-      const code = document.getElementById('custom-cur-code').value.trim().toUpperCase();
-      const name = document.getElementById('custom-cur-name').value.trim() || code;
-      const symbol = document.getElementById('custom-cur-symbol').value.trim() || code;
-      const rate = Number(document.getElementById('custom-cur-rate').value);
-
-      if (!code || code.length < 2) {
-        showToast('請輸入外幣代號（例如 VND、NZD）');
-        return;
-      }
-      if (!rate || rate <= 0) {
-        showToast('請輸入有效匯率');
-        return;
-      }
-
-      const isFromLive = Boolean(liveApiRatesCache && liveApiRatesCache[code]);
-      state.currencies[code] = {
-        code,
-        name,
-        symbol,
-        flag: '🌐',
-        per100: rate,
-        isCustomRate: !isFromLive
-      };
-      state.selectedCurrency = code;
-
-      document.getElementById('custom-cur-code').value = '';
-      document.getElementById('custom-cur-name').value = '';
-      document.getElementById('custom-cur-symbol').value = '';
-      document.getElementById('custom-cur-rate').value = '';
-
-      pushStateToCloud();
-      showToast(`🎉 已新增並切換至 ${name} (${code})！`);
-    };
-
-    window.fetchLiveExchangeRates = fetchLiveExchangeRates;
-
-    // 成員管理
-    window.addMember = function () {
-      const input = document.getElementById('new-member-input');
-      const name = input.value.trim();
-      if (!name) return;
-      const avatars = ['🧢', '🎒', '🕶️', '🐱', '🐶', '🦊', '🐼', '🌟'];
-      const avatar = avatars[state.members.length % avatars.length];
-      state.members.push({ id: 'm_' + Date.now(), name, avatar });
-      input.value = '';
-      pushStateToCloud();
-      showToast(`已加入成員「${name}」`);
-    };
-
-    window.removeMember = function (id) {
-      if (state.members.length <= 2) {
-        showToast('至少要有 2 位成員先可以夾錢㗎！');
-        return;
-      }
-      const inUse = state.expenses.some((e) => e.paidBy === id || (e.splitWith || []).includes(id));
-      if (inUse) {
-        showToast('呢位成員已經有開支紀錄，請先刪除相關開支');
-        return;
-      }
-      state.members = state.members.filter((m) => m.id !== id);
-      pushStateToCloud();
-    };
-
-    // 房間切換與 WhatsApp 分享功能
-    window.switchRoomCode = function () {
-      const val = document.getElementById('room-code-input').value.trim().toUpperCase();
-      if (!val) {
-        showToast('請輸入房間暗號');
-        return;
-      }
-      state.roomCode = val;
-      if (db && currentUser) {
-        subscribeToRoom(val);
-      }
-      renderAll();
-      closeModal('room-modal');
-      showToast(`🔑 已切換至房間「${val}」！`);
-    };
-
-    function copyTextToClipboard(text, successMsg) {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand('copy');
-        showToast(successMsg);
-      } catch (e) {
-        showToast('複製失敗，請手動複製');
-      }
-      document.body.removeChild(ta);
-    }
-
-    window.copyWhatsAppSettlement = function () {
-      const summary = calculateSummary();
-      const curObj = state.currencies[state.selectedCurrency] || state.currencies.JPY;
-      const lines = [
-        `📊 *【${state.tripName}】夾錢結算清單*`,
-        `🔑 同步房號：${state.roomCode}`,
-        `━━━━━━━━━━━━━━`,
-        `💰 總開支：HK$ ${summary.totalHKD.toFixed(0)} (約 ${curObj.symbol}${summary.totalForeign.toLocaleString('en-US', { maximumFractionDigits: 0 })})`,
-        `💱 計數匯率：100 ${state.selectedCurrency} = ${curObj.per100} HKD`,
-        ``,
-        `💸 *最簡化 PayMe / FPS 過數清單：*`
-      ];
-
-      if (summary.transactions.length === 0) {
-        lines.push(`✅ 大家數目已經清晒，唔使過數！`);
-      } else {
-        summary.transactions.forEach((t, i) => {
-          lines.push(`${i + 1}. *${t.from.name}* 過數俾 *${t.to.name}* 👉 *HK$ ${t.amountHKD.toFixed(0)}*`);
-        });
-      }
-
-      lines.push(``, `🧾 *個人埋單明細：*`);
-      summary.balances.forEach((b) => {
-        lines.push(`• ${b.name}：已墊支 HK$${b.paid.toFixed(0)}｜應分攤 HK$${b.share.toFixed(0)}`);
-      });
-
-      copyTextToClipboard(lines.join('\n'), '✅ 已複製 WhatsApp 結算單！快啲貼去群組啦');
-    };
-
-    window.copyInviteLinkWithBackup = function () {
-      // 產生壓縮同步碼，等朋友就算喺唔同環境打開都可以一鍵載入
-      const backupPayload = btoa(
-        encodeURIComponent(
-          JSON.stringify({
-            r: state.roomCode,
-            n: state.tripName,
-            c: state.selectedCurrency,
-            m: state.members,
-            e: state.expenses
-          })
-        )
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800 text-sm">匯率設定 (兌 HKD)</h3>
+                    <span className="text-xs text-slate-400">1 外幣 = ? 港幣</span>
+                  </div>
+                  <form onSubmit={handleAddCustomCurrency} className="flex gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                    <input type="text" maxLength="3" placeholder="代號 (如 NZD)" value={newCurCode} onChange={e => setNewCurCode(e.target.value.toUpperCase())} className="w-24 text-xs bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-mono uppercase" />
+                    <input type="number" step="any" placeholder="兌港幣匯率" value={newCurRate} onChange={e => setNewCurRate(e.target.value)} className="flex-1 text-xs bg-white border border-slate-200 rounded-lg px-2 py-1.5" />
+                    <button type="submit" className="bg-slate-800 text-white text-xs font-bold px-3 rounded-lg">＋貨幣</button>
+                  </form>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {Object.keys(rates).map(cur => (
+                      <div key={cur} className="flex justify-between items-center p-2 bg-slate-50 rounded-xl border border-slate-100">
+                        <span className="font-bold text-slate-700">{cur}</span>
+                        <input type="number" step="0.0001" value={rates[cur]} onChange={e => handleRateChange(cur, e.target.value)} className="w-20 text-right bg-white border border-slate-200 rounded px-1.5 py-0.5 font-mono font-medium" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       );
-
-      const shareUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(state.roomCode)}`;
-      const msg = [
-        `✈️ *【${state.tripName}】旅行夾錢 App*`,
-        `我整咗個旅行夾錢 App，大家打開條 Link 撳「加至主畫面」就可以變身全螢幕真 App 一齊記數！`,
-        ``,
-        `🔑 *我哋個房間暗號：* ${state.roomCode}`,
-        `🔗 *打開連結：* ${shareUrl}`,
-        ``,
-        `📦 *離線同步碼（複製下面成段貼入 App 即可載入最新帳目）：*`,
-        backupPayload
-      ].join('\n');
-
-      copyTextToClipboard(msg, '📲 已複製旅伴邀請訊息及同步碼！');
-    };
-
-    window.importBackupCode = function () {
-      const raw = document.getElementById('import-code-input').value.trim();
-      if (!raw) {
-        showToast('請先貼上朋友傳嚟嘅同步碼');
-        return;
-      }
-      try {
-        // 如果成段 WhatsApp 訊息貼咗入嚟，自動擷取最後一行 Base64 碼
-        const lines = raw.split(/\s+/);
-        const codeCandidate = lines[lines.length - 1];
-        const decoded = JSON.parse(decodeURIComponent(atob(codeCandidate)));
-        if (decoded && decoded.m && decoded.e) {
-          state.roomCode = decoded.r || state.roomCode;
-          state.tripName = decoded.n || state.tripName;
-          state.selectedCurrency = decoded.c || state.selectedCurrency;
-          state.members = decoded.m;
-          state.expenses = decoded.e;
-          document.getElementById('import-code-input').value = '';
-          pushStateToCloud();
-          closeModal('room-modal');
-          showToast('🎉 成功載入朋友嘅最新旅程帳目！');
-        } else {
-          throw new Error('Invalid format');
-        }
-      } catch (e) {
-        showToast('同步碼格式唔啱，請確認複製咗完整同步碼');
-      }
-    };
-
-    // 檢查網址有冇帶 ?room=XXXX 參數
-    function checkUrlRoomParam() {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const roomParam = params.get('room');
-        if (roomParam) {
-          state.roomCode = roomParam.trim().toUpperCase();
-        }
-      } catch (e) {}
     }
 
-    // ---------------------------------------------------------
-    // 9. 啟動 App
-    // ---------------------------------------------------------
-    window.addEventListener('DOMContentLoaded', () => {
-      generateNativeAppIconAndManifest();
-      checkUrlRoomParam();
-      renderAll();
-      fetchLiveExchangeRates(false);
-      initCloudSync();
-    });
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>
 </body>
 </html>
