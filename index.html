@@ -168,6 +168,8 @@
       const [members, setMembers] = useState(DEFAULT_MEMBERS);
       const [expenses, setExpenses] = useState([]);
       const [customRates, setCustomRates] = useState({});
+      // 新增：房間預設貨幣 (用戶喺匯率頁面點選嘅貨幣會置頂並設為預設)
+      const [defaultCurrency, setDefaultCurrency] = useState("JPY");
 
       // UI 導覽與彈窗狀態
       const [activeTab, setActiveTab] = useState("expenses");
@@ -206,6 +208,16 @@
       const rates = useMemo(() => {
         return { ...liveRates, ...customRates };
       }, [liveRates, customRates]);
+
+      // 將用戶點選嘅「預設貨幣 (defaultCurrency)」永遠排喺貨幣選項清單最頂第一位！
+      const sortedCurrencies = useMemo(() => {
+        const allKeys = Object.keys(rates);
+        return allKeys.sort((a, b) => {
+          if (a === defaultCurrency) return -1;
+          if (b === defaultCurrency) return 1;
+          return 0;
+        });
+      }, [rates, defaultCurrency]);
 
       // 監聽網絡連線狀態 (離線記帳支援)
       useEffect(() => {
@@ -277,6 +289,11 @@
             if (Array.isArray(cached.members)) setMembers(cached.members);
             if (Array.isArray(cached.expenses)) setExpenses(cached.expenses);
             if (cached.customRates) setCustomRates(cached.customRates);
+            if (cached.defaultCurrency) {
+              setDefaultCurrency(cached.defaultCurrency);
+              setCurrency(cached.defaultCurrency);
+              setPoolCurrency(cached.defaultCurrency);
+            }
           } catch (e) {}
         }
 
@@ -293,6 +310,7 @@
             const loadedMembers = Array.isArray(data.members) && data.members.length > 0 ? data.members : DEFAULT_MEMBERS;
             const expList = data.expenses ? Object.values(data.expenses).sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
             const cRates = data.customRates || {};
+            const defCur = data.defaultCurrency || "JPY";
 
             setTripName(tName);
             setMembers(loadedMembers);
@@ -304,12 +322,16 @@
             setPoolContributors(loadedMembers);
             setExpenses(expList);
             setCustomRates(cRates);
+            setDefaultCurrency(defCur);
+            setCurrency(defCur);
+            setPoolCurrency(defCur);
 
             localStorage.setItem(`triptab_cache_${roomId}`, JSON.stringify({
               tripName: tName,
               members: loadedMembers,
               expenses: expList,
-              customRates: cRates
+              customRates: cRates,
+              defaultCurrency: defCur
             }));
           } else {
             const initialRoomData = {
@@ -317,6 +339,7 @@
               members: DEFAULT_MEMBERS,
               expenses: {},
               customRates: {},
+              defaultCurrency: "JPY",
               createdAt: Date.now()
             };
             roomRef.set(initialRoomData);
@@ -332,6 +355,14 @@
         roomRef.on("value", handleValue, handleError);
         return () => roomRef.off("value", handleValue);
       }, [roomId]);
+
+      // 在「匯率」頁面點選某個貨幣 -> 設定為預設置頂貨幣並同步到雲端
+      const handleSelectDefaultCurrency = (cur) => {
+        setDefaultCurrency(cur);
+        setCurrency(cur);
+        setPoolCurrency(cur);
+        db.ref(`rooms/${roomId}/defaultCurrency`).set(cur);
+      };
 
       const toHKD = (amt, curr) => {
         const r = rates[curr] || 1;
@@ -378,7 +409,6 @@
       const isPoolInsufficient = useMemo(() => {
         if (payer !== POOL_PAYER_KEY) return false;
         const numAmt = parseFloat(amount) || 0;
-        // 如果公數餘額 <= 0，或者輸入金額 > 公數餘額，即視為餘額不足
         return currentCurrencyPoolBalance <= 0 || numAmt > currentCurrencyPoolBalance + 0.0001;
       }, [payer, amount, currentCurrencyPoolBalance]);
 
@@ -432,6 +462,7 @@
           members: DEFAULT_MEMBERS,
           expenses: {},
           customRates: {},
+          defaultCurrency: defaultCurrency || "JPY",
           createdAt: Date.now()
         };
         db.ref(`rooms/${newCode}`).set(initialRoomData).then(() => {
@@ -644,7 +675,8 @@
         const rateVal = parseFloat(newCurRate);
         if (code.length !== 3 || isNaN(rateVal) || rateVal <= 0) return;
         db.ref(`rooms/${roomId}/customRates/${code}`).set(rateVal);
-        setCurrency(code);
+        // 新增自訂貨幣時，同時自動設為預設頂置貨幣
+        handleSelectDefaultCurrency(code);
         setNewCurCode("");
         setNewCurRate("");
       };
@@ -1101,7 +1133,7 @@
                 <button
                   type="button"
                   onClick={() => {
-                    setPoolCurrency(currency);
+                    setPoolCurrency(defaultCurrency);
                     setShowPoolModal(true);
                   }}
                   className="bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl shadow-2xs flex-shrink-0 transition"
@@ -1137,10 +1169,15 @@
                 <div className="flex justify-between items-center px-1">
                   <div>
                     <h2 className="text-base font-extrabold text-slate-800">Trip Timeline</h2>
-                    <p className="text-[11px] text-slate-500">按旅程日數自動分組 ({expenses.length} 筆記錄)</p>
+                    <p className="text-[11px] text-slate-500">
+                      按旅程日數自動分組 • 預設貨幣：<span className="font-bold text-[#3B6E52]">{defaultCurrency}</span>
+                    </p>
                   </div>
                   <button
-                    onClick={() => setShowAddForm(!showAddForm)}
+                    onClick={() => {
+                      if (!showAddForm) setCurrency(defaultCurrency);
+                      setShowAddForm(!showAddForm);
+                    }}
                     className="bg-[#4E8C6F] text-white text-xs font-bold px-3.5 py-2 rounded-full shadow-sm hover:bg-[#3F765C] transition"
                   >
                     {showAddForm ? "✕ 收起表單" : "＋ 記一筆新開支"}
@@ -1193,8 +1230,17 @@
                             required
                           />
                         </div>
-                        <select value={currency} onChange={e => setCurrency(e.target.value)} className="bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-2 text-sm font-extrabold text-[#3B6E52] focus:outline-none">
-                          {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                        {/* 貨幣下拉選單：自動將預設貨幣排喺最頂第一位 */}
+                        <select
+                          value={currency}
+                          onChange={e => setCurrency(e.target.value)}
+                          className="bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-2 text-sm font-extrabold text-[#3B6E52] focus:outline-none"
+                        >
+                          {sortedCurrencies.map(c => (
+                            <option key={c} value={c}>
+                              {c === defaultCurrency ? `${c} ⭐` : c}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -1655,23 +1701,25 @@
               </div>
             )}
 
-            {/* TAB 4: 多國匯率設定 */}
+            {/* TAB 4: 多國匯率設定 (點選任何貨幣即自動設為預設並置頂) */}
             {activeTab === "rates" && (
               <div className="space-y-4">
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <div className="flex justify-between items-center gap-2">
                     <div>
-                      <h3 className="font-extrabold text-slate-800 text-sm">🌍 匯率設定 (兌 HKD)</h3>
-                      <p className="text-[11px] text-slate-400">可手動改唱錢靚價，或隨時還原網上即時價</p>
+                      <h3 className="font-extrabold text-slate-800 text-sm">🌍 匯率與預設貨幣設定</h3>
+                      <p className="text-[11px] text-slate-500">
+                        💡 <strong>點擊任何貨幣即可設為預設並排最頂</strong>（目前預設：<strong className="text-[#3B6E52]">{defaultCurrency}</strong>）
+                      </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => fetchLiveRatesFromAPI(true)}
                       disabled={isRefreshingRates}
-                      className="bg-[#EFF6F2] hover:bg-[#E1EDE5] text-[#3B6E52] border border-emerald-200 text-xs font-extrabold px-3 py-2 rounded-xl flex items-center gap-1 shadow-2xs transition active:scale-95"
+                      className="bg-[#EFF6F2] hover:bg-[#E1EDE5] text-[#3B6E52] border border-emerald-200 text-xs font-extrabold px-3 py-2 rounded-xl flex items-center gap-1 shadow-2xs transition active:scale-95 flex-shrink-0"
                     >
                       <span className={isRefreshingRates ? "animate-spin" : ""}>🔄</span>
-                      <span>全部還原即時匯率</span>
+                      <span>還原即時匯率</span>
                     </button>
                   </div>
 
@@ -1682,17 +1730,36 @@
                   </form>
 
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    {Object.keys(rates).map(cur => {
+                    {sortedCurrencies.map(cur => {
+                      const isDefault = cur === defaultCurrency;
                       const isCustomModified = customRates[cur] !== undefined && liveRates[cur] !== undefined && Number(customRates[cur]) !== Number(liveRates[cur]);
                       return (
-                        <div key={cur} className={`flex justify-between items-center p-2.5 rounded-xl border ${isCustomModified ? "bg-amber-50/60 border-amber-200" : "bg-slate-50 border-slate-100"}`}>
-                          <div className="flex flex-col">
-                            <div className="flex items-center gap-1">
-                              <span className="font-extrabold text-slate-700">{cur}</span>
+                        <div
+                          key={cur}
+                          onClick={() => handleSelectDefaultCurrency(cur)}
+                          className={`flex justify-between items-center p-2.5 rounded-xl border cursor-pointer transition ${
+                            isDefault
+                              ? "bg-[#EFF6F2] border-[#4E8C6F] ring-2 ring-[#4E8C6F]/30 shadow-xs"
+                              : isCustomModified
+                              ? "bg-amber-50/60 border-amber-200 hover:border-amber-300"
+                              : "bg-slate-50 border-slate-100 hover:border-emerald-200"
+                          }`}
+                        >
+                          <div className="flex flex-col min-w-0 pr-1">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="font-extrabold text-slate-800">{cur}</span>
+                              {isDefault && (
+                                <span className="text-[9px] bg-[#4E8C6F] text-white px-1.5 py-0.2 rounded-full font-bold whitespace-nowrap">
+                                  ⭐ 預設
+                                </span>
+                              )}
                               {isCustomModified && (
                                 <button
                                   type="button"
-                                  onClick={() => handleResetSingleRate(cur)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleResetSingleRate(cur);
+                                  }}
                                   title={`點擊還原網上即時匯率 (${liveRates[cur]})`}
                                   className="text-[10px] bg-amber-200/80 hover:bg-amber-300 text-amber-900 px-1.5 py-0.2 rounded font-bold"
                                 >
@@ -1700,16 +1767,22 @@
                                 </button>
                               )}
                             </div>
-                            {liveRates[cur] && (
+                            {liveRates[cur] ? (
                               <span className="text-[9px] text-slate-400">即時: {liveRates[cur]}</span>
+                            ) : (
+                              <span className="text-[9px] text-slate-400">點擊設為預設</span>
                             )}
                           </div>
                           <input
                             type="number"
                             step="0.0001"
                             value={rates[cur]}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectDefaultCurrency(cur);
+                            }}
                             onChange={e => handleRateChange(cur, e.target.value)}
-                            className="w-20 text-right bg-white border border-slate-200 rounded-lg px-1.5 py-1 font-mono font-semibold text-[#3B6E52]"
+                            className="w-20 text-right bg-white border border-slate-200 rounded-lg px-1.5 py-1 font-mono font-semibold text-[#3B6E52] focus:outline-none focus:ring-1 focus:ring-[#4E8C6F]"
                           />
                         </div>
                       );
@@ -1753,7 +1826,11 @@
                       onChange={e => setPoolCurrency(e.target.value)}
                       className="bg-teal-50 border border-teal-200 rounded-xl px-3 py-2 text-sm font-extrabold text-teal-800"
                     >
-                      {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                      {sortedCurrencies.map(c => (
+                        <option key={c} value={c}>
+                          {c === defaultCurrency ? `${c} ⭐` : c}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
