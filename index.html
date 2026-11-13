@@ -41,7 +41,6 @@
     input, select, textarea {
       user-select: auto;
     }
-    /* 隱藏數字輸入框預設上下箭嘴 */
     input[type="number"]::-webkit-inner-spin-button,
     input[type="number"]::-webkit-outer-spin-button {
       -webkit-appearance: none;
@@ -74,7 +73,6 @@
     }
     const db = firebase.database();
 
-    // 常用貨幣基準匯率
     const DEFAULT_RATES = {
       HKD: 1.0,
       JPY: 0.052,
@@ -96,7 +94,6 @@
     const DEFAULT_MEMBERS = ["我", "老公", "奶奶", "老爺", "叔仔"];
     const POOL_PAYER_KEY = "__POOL__";
 
-    // 預設活動分類清單
     const DEFAULT_CATEGORIES = [
       { name: "餐飲", icon: "🍱" },
       { name: "交通", icon: "🚗" },
@@ -107,7 +104,6 @@
       { name: "雜項", icon: "💡" }
     ];
 
-    // 圓餅圖與分類配色池
     const PALETTE_STYLES = [
       { bg: "bg-emerald-100 text-emerald-700", color: "#34D399" },
       { bg: "bg-blue-100 text-blue-700", color: "#60A5FA" },
@@ -121,7 +117,6 @@
       { bg: "bg-slate-100 text-slate-700", color: "#94A3B8" }
     ];
 
-    // 產生 6 位數隨機房間代碼
     const generateRoomCode = () => {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       let result = "";
@@ -146,7 +141,17 @@
       return newRandomCode;
     };
 
-    // 內建行李牌單據 Logo
+    const getInitialSavedRooms = () => {
+      try {
+        const raw = localStorage.getItem("triptab_saved_rooms");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) {}
+      return [];
+    };
+
     const TripTabLogo = ({ className = "w-11 h-11" }) => {
       const [imgErr, setImgErr] = useState(false);
       if (!imgErr) {
@@ -180,6 +185,7 @@
 
     function App() {
       const [roomId, setRoomId] = useState(getInitialRoom);
+      const [savedRooms, setSavedRooms] = useState(getInitialSavedRooms);
       const [roomInput, setRoomInput] = useState("");
       const [newRoomCustomName, setNewRoomCustomName] = useState("");
       const [syncStatus, setSyncStatus] = useState("connecting");
@@ -192,25 +198,23 @@
       const [expenses, setExpenses] = useState([]);
       const [customRates, setCustomRates] = useState({});
       const [defaultCurrency, setDefaultCurrency] = useState("JPY");
+      const [settledMarks, setSettledMarks] = useState({});
 
-      // UI 導覽與彈窗狀態
+      // UI 狀態
       const [activeTab, setActiveTab] = useState("expenses");
       const [showAddForm, setShowAddForm] = useState(false);
       const [showPoolModal, setShowPoolModal] = useState(false);
-      const [editingExpense, setEditingExpense] = useState(null); // 編輯帳目彈窗狀態
-      const [expenseToDelete, setExpenseToDelete] = useState(null); // Double confirm 刪除彈窗狀態
+      const [editingExpense, setEditingExpense] = useState(null);
+      const [expenseToDelete, setExpenseToDelete] = useState(null);
       const [collapsedDays, setCollapsedDays] = useState({});
 
-      // 成員改名彈窗狀態
       const [renamingMember, setRenamingMember] = useState(null);
       const [renameInputVal, setRenameInputVal] = useState("");
 
-      // 設定頁：新增成員與新增自訂類別狀態
       const [newMemberName, setNewMemberName] = useState("");
       const [newCatIcon, setNewCatIcon] = useState("✨");
       const [newCatName, setNewCatName] = useState("");
 
-      // 匯率狀態
       const [liveRates, setLiveRates] = useState(DEFAULT_RATES);
       const [rateUpdatedText, setRateUpdatedText] = useState("載入中...");
       const [isRefreshingRates, setIsRefreshingRates] = useState(false);
@@ -228,14 +232,40 @@
       const [splitMode, setSplitMode] = useState("equal");
       const [customSplitsInput, setCustomSplitsInput] = useState({});
 
-      // 公數錢包注資表單狀態 (加入日期選擇)
+      // 公數錢包注資表單狀態
       const [poolPerPersonAmt, setPoolPerPersonAmt] = useState("10000");
       const [poolCurrency, setPoolCurrency] = useState("JPY");
       const [poolContributors, setPoolContributors] = useState(DEFAULT_MEMBERS);
       const [poolNote, setPoolNote] = useState("公數錢包注資");
       const [poolDate, setPoolDate] = useState(() => new Date().toISOString().split("T")[0]);
 
-      // 動態計算每個分類嘅圖示同顏色
+      // 更新並儲存「我的房間列表」至本機
+      const upsertSavedRoom = (id, name) => {
+        if (!id) return;
+        setSavedRooms(prev => {
+          const exists = prev.find(r => r.id === id);
+          let next;
+          if (exists) {
+            next = prev.map(r => r.id === id ? { ...r, name: name || r.name, updatedAt: Date.now() } : r);
+          } else {
+            next = [{ id, name: name || "新旅程記帳 ✈️", updatedAt: Date.now() }, ...prev];
+          }
+          localStorage.setItem("triptab_saved_rooms", JSON.stringify(next));
+          return next;
+        });
+      };
+
+      const removeSavedRoomFromList = (id, e) => {
+        e.stopPropagation();
+        if (id === roomId) return;
+        if (!window.confirm(`確定要從「我的房間列表」移除 #${id} 嗎？（雲端資料唔會被刪除，日後仍可憑代碼入返）`)) return;
+        setSavedRooms(prev => {
+          const next = prev.filter(r => r.id !== id);
+          localStorage.setItem("triptab_saved_rooms", JSON.stringify(next));
+          return next;
+        });
+      };
+
       const getCategoryMeta = (catName) => {
         if (catName === "公數注資") {
           return { icon: "👛", bg: "bg-teal-100 text-teal-800", color: "#14B8A6" };
@@ -248,12 +278,10 @@
         return { icon: "💡", bg: "bg-slate-100 text-slate-700", color: "#94A3B8" };
       };
 
-      // 合併即時匯率與自訂匯率
       const rates = useMemo(() => {
         return { ...liveRates, ...customRates };
       }, [liveRates, customRates]);
 
-      // 將用戶點選嘅「預設貨幣 (defaultCurrency)」永遠排喺貨幣選項清單最頂第一位
       const sortedCurrencies = useMemo(() => {
         const allKeys = Object.keys(rates);
         return allKeys.sort((a, b) => {
@@ -263,7 +291,6 @@
         });
       }, [rates, defaultCurrency]);
 
-      // 監聽網絡連線狀態
       useEffect(() => {
         const handleOnline = () => setIsOnline(true);
         const handleOffline = () => setIsOnline(false);
@@ -275,7 +302,6 @@
         };
       }, []);
 
-      // 抓取網上即時匯率函數
       const fetchLiveRatesFromAPI = (resetCustom = false) => {
         setIsRefreshingRates(true);
         return fetch("https://open.er-api.com/v6/latest/HKD")
@@ -320,7 +346,7 @@
         fetchLiveRatesFromAPI(false);
       }, []);
 
-      // 監聽 Firebase 房間資料 + 本地離線緩存讀取
+      // 監聽 Firebase 房間資料
       useEffect(() => {
         setSyncStatus("connecting");
         localStorage.setItem("last_travel_room", roomId);
@@ -329,11 +355,15 @@
         if (cachedStr) {
           try {
             const cached = JSON.parse(cachedStr);
-            if (cached.tripName) setTripName(cached.tripName);
+            if (cached.tripName) {
+              setTripName(cached.tripName);
+              upsertSavedRoom(roomId, cached.tripName);
+            }
             if (Array.isArray(cached.members)) setMembers(cached.members);
             if (Array.isArray(cached.categories) && cached.categories.length > 0) setCategories(cached.categories);
             if (Array.isArray(cached.expenses)) setExpenses(cached.expenses);
             if (cached.customRates) setCustomRates(cached.customRates);
+            if (cached.settledMarks) setSettledMarks(cached.settledMarks);
             if (cached.defaultCurrency) {
               setDefaultCurrency(cached.defaultCurrency);
               setCurrency(cached.defaultCurrency);
@@ -357,8 +387,10 @@
             const expList = data.expenses ? Object.values(data.expenses).sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
             const cRates = data.customRates || {};
             const defCur = data.defaultCurrency || "JPY";
+            const sMarks = data.settledMarks || {};
 
             setTripName(tName);
+            upsertSavedRoom(roomId, tName);
             setMembers(loadedMembers);
             setCategories(loadedCategories);
             setCategory(prev => loadedCategories.some(c => c.name === prev) ? prev : loadedCategories[0].name);
@@ -373,6 +405,7 @@
             setDefaultCurrency(defCur);
             setCurrency(defCur);
             setPoolCurrency(defCur);
+            setSettledMarks(sMarks);
 
             localStorage.setItem(`triptab_cache_${roomId}`, JSON.stringify({
               tripName: tName,
@@ -380,7 +413,8 @@
               categories: loadedCategories,
               expenses: expList,
               customRates: cRates,
-              defaultCurrency: defCur
+              defaultCurrency: defCur,
+              settledMarks: sMarks
             }));
           } else {
             const initialRoomData = {
@@ -389,10 +423,12 @@
               categories: DEFAULT_CATEGORIES,
               expenses: {},
               customRates: {},
+              settledMarks: {},
               defaultCurrency: "JPY",
               createdAt: Date.now()
             };
             roomRef.set(initialRoomData);
+            upsertSavedRoom(roomId, "新旅程記帳 ✈️");
           }
           setSyncStatus("synced");
         };
@@ -413,12 +449,24 @@
         db.ref(`rooms/${roomId}/defaultCurrency`).set(cur);
       };
 
+      // 按右邊 ✓ 號標記已付，文字會自動消除（同步上雲端）
+      const markTransactionAsPaid = (from, to) => {
+        const key = `${from}__TO__${to}`.replace(/[.#$\[\]\/]/g, "_");
+        setSettledMarks(prev => ({ ...prev, [key]: true }));
+        db.ref(`rooms/${roomId}/settledMarks/${key}`).set(true);
+      };
+
+      // 重設已付記錄（方便用戶萬一撳錯想還原）
+      const resetAllSettledMarks = () => {
+        setSettledMarks({});
+        db.ref(`rooms/${roomId}/settledMarks`).remove();
+      };
+
       const toHKD = (amt, curr) => {
         const r = rates[curr] || 1;
         return amt * r;
       };
 
-      // 計算公數錢包 (Pool Money) 各貨幣餘額
       const poolSummary = useMemo(() => {
         const byCurrency = {};
         let totalTopUpHKD = 0;
@@ -450,7 +498,6 @@
         };
       }, [expenses, rates]);
 
-      // 檢查新增表單中嘅公數餘額
       const currentCurrencyPoolBalance = useMemo(() => {
         return poolSummary.byCurrency[currency]?.balance || 0;
       }, [poolSummary, currency]);
@@ -461,12 +508,9 @@
         return currentCurrencyPoolBalance <= 0 || numAmt > currentCurrencyPoolBalance + 0.0001;
       }, [payer, amount, currentCurrencyPoolBalance]);
 
-      // 計算每筆開支入面「每位現有成員實際分攤幾多原幣」
-      // 支援：刪除成員後，自動只用餘下現有成員重新平分該筆開支總額！
       const getExpenseMemberShares = (exp) => {
         const total = Number(exp.amount) || 0;
         const rawSplits = Array.isArray(exp.splitWith) && exp.splitWith.length > 0 ? exp.splitWith : [];
-        // 只保留仍然喺現有成員名單 (members) 入面嘅人；如果整筆單嘅人都被刪晒，則 fallback 用全體現有成員平分
         const activeSplits = rawSplits.filter(m => members.includes(m));
         const splits = activeSplits.length > 0 ? activeSplits : members;
         const shares = {};
@@ -492,7 +536,6 @@
               shares[m] = eachRem;
             });
           } else if (Math.abs(total - specifiedSum) > 0.01 && splits.length > 0) {
-            // 如果因為刪走咗某個自訂金額成員而多出餘額，自動將差額平均分攤俾餘下參與成員
             const diffEach = (total - specifiedSum) / splits.length;
             splits.forEach(m => {
               shares[m] = Math.max(0, (shares[m] || 0) + diffEach);
@@ -507,7 +550,6 @@
         return shares;
       };
 
-      // 建立新房間
       const handleCreateNewRoom = (e) => {
         e.preventDefault();
         const customTitle = newRoomCustomName.trim();
@@ -522,10 +564,12 @@
           categories: DEFAULT_CATEGORIES,
           expenses: {},
           customRates: {},
+          settledMarks: {},
           defaultCurrency: defaultCurrency || "JPY",
           createdAt: Date.now()
         };
         db.ref(`rooms/${newCode}`).set(initialRoomData).then(() => {
+          upsertSavedRoom(newCode, customTitle);
           setRoomId(newCode);
           setNewRoomCustomName("");
           setActiveTab("expenses");
@@ -533,7 +577,6 @@
         });
       };
 
-      // 切換房間
       const handleSwitchRoom = (e) => {
         e.preventDefault();
         const clean = sanitizeRoomId(roomInput);
@@ -544,6 +587,7 @@
         db.ref(`rooms/${clean}`).once("value").then((snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.val();
+            upsertSavedRoom(clean, data.tripName || clean);
             setRoomId(clean);
             setRoomInput("");
             setActiveTab("expenses");
@@ -556,9 +600,9 @@
 
       const handleTripNameBlur = () => {
         db.ref(`rooms/${roomId}/tripName`).set(tripName);
+        upsertSavedRoom(roomId, tripName);
       };
 
-      // 預覽不等額分帳狀態
       const customSplitPreview = useMemo(() => {
         const total = parseFloat(amount) || 0;
         let specifiedSum = 0;
@@ -576,7 +620,6 @@
         return { total, specifiedSum, remainder, unspecified, autoEach };
       }, [amount, splitWith, customSplitsInput]);
 
-      // 提交一般或公數支出
       const handleAddExpense = (e) => {
         e.preventDefault();
         const numAmt = parseFloat(amount);
@@ -641,7 +684,6 @@
         setShowAddForm(false);
       };
 
-      // 提交「公數錢包注資 (Pool Top-up)」(連自選日期)
       const handleAddPoolTopUp = (e) => {
         e.preventDefault();
         const perAmt = parseFloat(poolPerPersonAmt);
@@ -668,7 +710,6 @@
         setShowPoolModal(false);
       };
 
-      // 開啟 Edit 編輯帳目彈窗
       const openEditModal = (exp) => {
         setEditingExpense({
           ...exp,
@@ -682,12 +723,10 @@
         });
       };
 
-      // 儲存 Edit 編輯帳目修改
       const handleSaveEditExpense = (e) => {
         e.preventDefault();
         if (!editingExpense) return;
 
-        // 情況 A：編輯「公數注資」
         if (editingExpense.type === "pool_topup") {
           const perAmt = parseFloat(editingExpense.perPersonStr);
           const contribs = editingExpense.contributors || [];
@@ -698,7 +737,6 @@
           const newTotal = perAmt * contribs.length;
           const cur = editingExpense.currency || "HKD";
 
-          // 檢查修改後會唔會令公數變負數
           const oldAmt = editingExpense.currency === cur ? (Number(editingExpense.amount) || 0) : 0;
           const curBal = poolSummary.byCurrency[cur]?.balance || 0;
           if (curBal - oldAmt + newTotal < -0.0001) {
@@ -726,14 +764,12 @@
           return;
         }
 
-        // 情況 B：編輯一般開支或公數支出
         const numAmt = parseFloat(editingExpense.amountStr);
         if (!editingExpense.title || isNaN(numAmt) || numAmt <= 0 || (editingExpense.splitWith || []).length === 0) {
           alert("請填寫完整開支名稱、金額同夾份成員！");
           return;
         }
 
-        // 如果揀咗公數錢包支付，檢查扣除舊單金額後夠唔夠畀新金額
         if (editingExpense.payer === POOL_PAYER_KEY) {
           const cur = editingExpense.currency;
           const originalExp = expenses.find(x => x.id === editingExpense.id);
@@ -799,7 +835,6 @@
         setEditingExpense(null);
       };
 
-      // 喺 Edit Page 入面撳垃圾桶 -> 觸發 Double Confirm 刪除彈窗
       const requestDeleteExpense = (exp) => {
         if (exp.type === "pool_topup") {
           const cur = exp.currency || "HKD";
@@ -822,7 +857,6 @@
         setEditingExpense(null);
       };
 
-      // 新增成員
       const handleAddMember = () => {
         const name = newMemberName.trim();
         if (!name || members.includes(name)) return;
@@ -833,7 +867,6 @@
         setNewMemberName("");
       };
 
-      // ✏️ 成員全局改名功能：自動將所有歷史帳目嘅 payer、splitWith、contributors、customSplits 一次過換成新名
       const openRenameMemberModal = (oldName) => {
         setRenamingMember(oldName);
         setRenameInputVal(oldName);
@@ -889,8 +922,6 @@
         setRenamingMember(null);
       };
 
-      // 刪除成員：將該成員從所有夾份名單 (splitWith) 剔除，讓餘下成員自動重新平分該筆開支總額；
-      // 若被刪成員係某筆開支嘅墊支人 (payer)，保留其 payer 紀錄並在結算頁顯示為負數！
       const handleRemoveMember = (name) => {
         if (members.length <= 1) {
           alert("房間至少要保留 1 位成員！");
@@ -927,7 +958,6 @@
         });
       };
 
-      // 新增自訂活動類別
       const handleAddCategory = (e) => {
         e.preventDefault();
         const cleanName = newCatName.trim();
@@ -944,7 +974,6 @@
         setNewCatName("");
       };
 
-      // 刪除活動類別
       const handleRemoveCategory = (catName) => {
         if (categories.length <= 1) {
           alert("至少要保留 1 個活動類別！");
@@ -980,7 +1009,6 @@
         setNewCurRate("");
       };
 
-      // 實際消費總額
       const realExpenses = useMemo(() => {
         return expenses.filter(e => e.type !== "pool_topup");
       }, [expenses]);
@@ -989,7 +1017,6 @@
         return realExpenses.reduce((acc, exp) => acc + toHKD(Number(exp.amount), exp.currency), 0);
       }, [realExpenses, rates]);
 
-      // 按日期分組 (Day 1, Day 2...) 時間軸計算
       const groupedDays = useMemo(() => {
         if (expenses.length === 0) return [];
         const allDates = expenses.map(e => e.date || "2026-11-14").sort();
@@ -1019,10 +1046,10 @@
         return Object.values(groupsMap).sort((a, b) => b.date.localeCompare(a.date));
       }, [expenses, rates]);
 
-      // 結算演算法 (支援：刪除成員後餘下成員自動重新平分 + 被刪墊支人直接顯示負數)
+      // 結算演算法 (打 Tick 嘅項目會自動消除並同步調整剩餘結餘)
       const settlement = useMemo(() => {
         const balances = {};
-        const removedPayerNegativeBalances = {}; // 紀錄已被刪除但曾為墊支人嘅負數顯示
+        const removedPayerNegativeBalances = {};
         const personalConsumption = {};
 
         members.forEach(m => {
@@ -1053,7 +1080,6 @@
             if (members.includes(exp.payer)) {
               balances[exp.payer] += hkdAmount;
             } else if (exp.payer) {
-              // 被刪除嘅成員曾為墊支人 -> 直接顯示為負數
               removedPayerNegativeBalances[exp.payer] = (removedPayerNegativeBalances[exp.payer] || 0) - hkdAmount;
             }
           }
@@ -1077,14 +1103,14 @@
         debtors.sort((a, b) => b.amount - a.amount);
         creditors.sort((a, b) => b.amount - a.amount);
 
-        const transactions = [];
+        const allTransactions = [];
         let i = 0, j = 0;
         while (i < debtors.length && j < creditors.length) {
           const deb = debtors[i];
           const cred = creditors[j];
           const settleAmt = Math.min(deb.amount, cred.amount);
 
-          transactions.push({
+          allTransactions.push({
             from: deb.name,
             to: cred.name,
             amount: Math.round(settleAmt)
@@ -1097,14 +1123,36 @@
           if (cred.amount === 0) j++;
         }
 
+        // 過濾走已經打 Tick 消除嘅項目，並更新個人尚欠/應收結餘
+        const activeTransactions = [];
+        let paidCount = 0;
+        const remainingBalances = { ...balances };
+
+        allTransactions.forEach(t => {
+          const markKey = `${t.from}__TO__${t.to}`.replace(/[.#$\[\]\/]/g, "_");
+          if (settledMarks[markKey]) {
+            paidCount++;
+            if (remainingBalances[t.from] !== undefined) remainingBalances[t.from] += t.amount;
+            if (remainingBalances[t.to] !== undefined) remainingBalances[t.to] -= t.amount;
+          } else {
+            activeTransactions.push(t);
+          }
+        });
+
         const spenderLeaderboard = Object.keys(personalConsumption)
           .map(name => ({ name, spentHKD: Math.round(personalConsumption[name]) }))
           .sort((a, b) => b.spentHKD - a.spentHKD);
 
-        return { balances, removedPayerNegativeBalances, transactions, spenderLeaderboard };
-      }, [expenses, members, rates]);
+        return {
+          balances: remainingBalances,
+          removedPayerNegativeBalances,
+          transactions: activeTransactions,
+          allTransactionsCount: allTransactions.length,
+          paidCount,
+          spenderLeaderboard
+        };
+      }, [expenses, members, rates, settledMarks]);
 
-      // 旅行消費分類佔比統計
       const categoryChartData = useMemo(() => {
         const map = {};
         realExpenses.forEach(exp => {
@@ -1123,7 +1171,6 @@
         return list;
       }, [realExpenses, totalHKD, rates, categories]);
 
-      // 一鍵匯出 Excel (.csv) 完整帳目報表
       const exportToExcelCSV = () => {
         if (expenses.length === 0) {
           alert("目前未有任何帳目可以匯出！");
@@ -1255,7 +1302,6 @@
         alert("已複製 WhatsApp 結算清單！");
       };
 
-      // SVG 圓餅圖計算
       const renderDonutChart = () => {
         if (categoryChartData.length === 0 || totalHKD <= 0) return null;
         const radius = 52;
@@ -1352,9 +1398,10 @@
               <div className="flex items-center gap-3">
                 <TripTabLogo className="w-12 h-12" />
                 <div>
+                  {/* 圖三修改：TRIPTAB PRO 改為 TripTab */}
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-extrabold tracking-widest uppercase text-[#3D6B52]">
-                      TRIPTAB PRO
+                    <span className="text-xs font-extrabold tracking-wide text-[#3D6B52]">
+                      TripTab
                     </span>
                     <span
                       className={`w-2 h-2 rounded-full ${!isOnline ? 'bg-amber-500' : syncStatus === 'synced' ? 'bg-emerald-500' : 'bg-amber-400 animate-ping'}`}
@@ -1369,8 +1416,9 @@
                   <h1 className="text-2xl font-black text-slate-800 tracking-tight leading-tight">
                     {tripName}
                   </h1>
+                  {/* 圖二修改：刪除 Smart Travel Split 字眼 */}
                   <p className="text-xs text-slate-600 font-medium mt-0.5">
-                    Smart Travel Split • {members.length} 位同行成員
+                    {members.length} 位同行成員
                   </p>
                 </div>
               </div>
@@ -1412,7 +1460,6 @@
                   </div>
                 </div>
 
-                {/* 一鍵匯出 Excel CSV 按鈕 */}
                 <button
                   type="button"
                   onClick={exportToExcelCSV}
@@ -1424,12 +1471,12 @@
                 </button>
               </div>
 
-              {/* 公數錢包 (Pool Money) 即時餘額小橫幅 */}
+              {/* 圖四修改：公數錢包後面刪除 (Common Fund) 字眼 */}
               <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-7 h-7 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center text-sm flex-shrink-0">👛</span>
                   <div className="min-w-0">
-                    <p className="text-[11px] font-extrabold text-slate-700">公數錢包 (Common Fund)</p>
+                    <p className="text-[11px] font-extrabold text-slate-700">公數錢包</p>
                     {poolSummary.hasActivity ? (
                       <p className="text-xs font-black text-teal-700 truncate">
                         餘額：{Object.entries(poolSummary.byCurrency).map(([c, obj]) => `${c} ${Math.round(obj.balance).toLocaleString()}`).join(" ｜ ")}
@@ -1452,7 +1499,6 @@
                 </button>
               </div>
 
-              {/* 分享按鈕雙組合 */}
               <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100">
                 <button onClick={shareRoomLink} className="bg-[#4E8C6F] hover:bg-[#3F765C] text-white text-xs font-bold py-2 px-3 rounded-xl shadow-sm transition flex items-center justify-center gap-1.5">
                   <span>🔗 邀請朋友入房</span>
@@ -1473,7 +1519,7 @@
           {/* 主內容區 */}
           <div className="px-5 pt-5 flex-1 space-y-4">
             
-            {/* TAB 1: 記帳明細 (連 Day 1, Day 2 時間軸分組) */}
+            {/* TAB 1: 記帳明細 */}
             {activeTab === "expenses" && (
               <div className="space-y-3.5">
                 <div className="flex justify-between items-center px-1">
@@ -1494,7 +1540,6 @@
                   </button>
                 </div>
 
-                {/* 新增開支摺疊表單 (已取消快捷計數欄 + 全面改用純數字鍵盤) */}
                 {showAddForm && (
                   <form onSubmit={handleAddExpense} className="bg-white p-4 rounded-[24px] shadow-md border border-emerald-100/80 space-y-3 animate-fadeIn">
                     <div className="flex justify-between items-center gap-2">
@@ -1549,7 +1594,6 @@
                       </select>
                     </div>
 
-                    {/* 邊個墊支先？ */}
                     <div className="text-xs space-y-1.5">
                       <label className="text-slate-500 font-medium">邊個畀錢 / 墊支先？</label>
                       <div className="flex gap-1.5 overflow-x-auto py-1 scrollbar-none">
@@ -1605,7 +1649,6 @@
                       )}
                     </div>
 
-                    {/* 邊個夾份 + 平分 vs 逐樣計切換 */}
                     <div className="text-xs space-y-2">
                       <div className="flex justify-between items-center">
                         <label className="text-slate-500 font-medium">邊個夾份？</label>
@@ -1711,7 +1754,6 @@
                   </form>
                 )}
 
-                {/* 按 Day 1, Day 2 摺疊分組時間軸列表 */}
                 <div className="space-y-3">
                   {groupedDays.length === 0 ? (
                     <div className="bg-white/90 p-8 rounded-[24px] border border-dashed border-emerald-200 text-center text-xs text-slate-400 space-y-2">
@@ -1805,7 +1847,6 @@
                                           </p>
                                         )}
                                       </div>
-                                      {/* 原本嘅垃圾桶改為 Edit 編輯按鈕 */}
                                       <button
                                         type="button"
                                         onClick={() => openEditModal(exp)}
@@ -1830,34 +1871,82 @@
               </div>
             )}
 
-            {/* TAB 2: 結算夾錢 + IG Story 消費圓餅圖 & 大豪客排行榜 */}
+            {/* TAB 2: 結算夾錢 (圖一修改：刪除「邊個要 PayMe / FPS 畀邊個」字眼 + 按右邊 ✓ 號自動消除文字) */}
             {activeTab === "settle" && (
               <div className="space-y-4">
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white">
-                  <div className="flex justify-between items-center mb-3">
-                    <div>
-                      <h3 className="font-extrabold text-slate-800 text-sm">⚡ 自動簡化結算 (連公數多除少補)</h3>
-                      <p className="text-[11px] text-slate-400">邊個要 PayMe / FPS 畀邊個</p>
-                    </div>
-                    <button onClick={copyToWhatsApp} className="bg-[#4E8C6F] text-white text-xs px-3.5 py-2 rounded-full font-bold flex items-center gap-1 shadow-sm hover:bg-[#3F765C]">
+                  <div className="flex justify-between items-center mb-3 gap-2">
+                    <h3 className="font-extrabold text-slate-800 text-sm">⚡ 自動簡化結算 (連公數多除少補)</h3>
+                    <button onClick={copyToWhatsApp} className="bg-[#4E8C6F] text-white text-xs px-3.5 py-2 rounded-full font-bold flex items-center gap-1 shadow-sm hover:bg-[#3F765C] flex-shrink-0">
                       📲 複製 WhatsApp 清單
                     </button>
                   </div>
+
                   {settlement.transactions.length === 0 ? (
-                    <div className="text-center py-6 text-slate-400 text-xs">🎉 目前大家收支平衡，互不相欠！</div>
+                    <div className="text-center py-6 space-y-2">
+                      <p className="text-slate-400 text-xs">
+                        {settlement.paidCount > 0 ? "🎉 所有過數項目已付清！" : "🎉 目前大家收支平衡，互不相欠！"}
+                      </p>
+                      {settlement.paidCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={resetAllSettledMarks}
+                          className="text-[11px] text-[#4E8C6F] font-bold underline"
+                        >
+                          ↺ 重設顯示已消除嘅過數記錄 ({settlement.paidCount} 筆)
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <div className="space-y-2.5">
                       {settlement.transactions.map((t, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3.5 bg-[#F5F9F6] rounded-2xl border border-emerald-100/80">
-                          <div className="flex items-center gap-2.5">
-                            <span className="w-7 h-7 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-black">💸</span>
-                            <span className="font-bold text-slate-700 text-sm">{t.from}</span>
-                            <span className="text-xs text-slate-400">➡️ 過數畀</span>
-                            <span className="font-bold text-[#3B6E52] text-sm">{t.to}</span>
+                        <div
+                          key={`${t.from}-${t.to}-${idx}`}
+                          className="flex items-center justify-between p-3.5 rounded-2xl border bg-[#F5F9F6] border-emerald-100/80 transition"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 bg-amber-100 text-amber-700">
+                              💸
+                            </span>
+                            <span className="font-bold text-sm truncate text-slate-700">
+                              {t.from}
+                            </span>
+                            <span className="text-xs text-slate-400 flex-shrink-0">➡️ 過數畀</span>
+                            <span className="font-bold text-sm truncate text-[#3B6E52]">
+                              {t.to}
+                            </span>
                           </div>
-                          <span className="font-black text-[#3B6E52] text-sm">HK$ {t.amount.toLocaleString()}</span>
+
+                          <div className="flex items-center gap-2.5 flex-shrink-0 ml-2">
+                            <span className="font-black text-sm text-[#3B6E52]">
+                              HK$ {t.amount.toLocaleString()}
+                            </span>
+                            {/* 簡潔圓形 Tick 號：撳一下該行自動消除 */}
+                            <button
+                              type="button"
+                              onClick={() => markTransactionAsPaid(t.from, t.to)}
+                              title="撳一下標記已付並消除"
+                              className="w-8 h-8 rounded-full flex items-center justify-center bg-white border-2 border-emerald-200 text-emerald-600 hover:bg-[#4E8C6F] hover:border-[#4E8C6F] hover:text-white transition active:scale-90"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                          </div>
                         </div>
                       ))}
+
+                      {settlement.paidCount > 0 && (
+                        <div className="text-right pt-1">
+                          <button
+                            type="button"
+                            onClick={resetAllSettledMarks}
+                            className="text-[11px] text-slate-400 hover:text-[#4E8C6F] underline"
+                          >
+                            已消除 {settlement.paidCount} 筆已付記錄 • 撳此還原
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1917,7 +2006,7 @@
                   )}
                 </div>
 
-                {/* 個人墊支與應付結餘 (含已刪除墊支人負數顯示) */}
+                {/* 個人墊支與應付結餘 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white">
                   <h3 className="font-extrabold text-slate-800 text-sm mb-3">📊 個人墊支與應付結餘</h3>
                   <div className="space-y-2">
@@ -1934,7 +2023,6 @@
                       );
                     })}
 
-                    {/* 如果被刪除嘅成員本身係墊支人，直接顯示為負數 */}
                     {Object.entries(settlement.removedPayerNegativeBalances).map(([removedName, negVal]) => (
                       <div key={removedName} className="flex justify-between items-center text-xs py-2 px-3 bg-rose-50/70 border border-rose-100 rounded-xl">
                         <span className="font-bold text-rose-700">{removedName} (已刪成員•曾墊支)</span>
@@ -1948,10 +2036,89 @@
               </div>
             )}
 
-            {/* TAB 3: 設定 (原「房間」頁：含房間切換、成員改名/刪除、自訂活動類別加減) */}
+            {/* TAB 3: 設定 */}
             {activeTab === "rooms" && (
               <div className="space-y-4">
+                
+                {/* 📁 我的房間列表 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-emerald-100 space-y-3">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">📁</span>
+                      <h3 className="font-extrabold text-slate-800 text-sm">我的房間列表</h3>
+                    </div>
+                    <span className="text-[11px] bg-[#EFF6F2] text-[#3B6E52] px-2.5 py-0.5 rounded-full font-extrabold">
+                      已解鎖無限房間 ✨
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {savedRooms.map(rm => {
+                      const isCurrent = rm.id === roomId;
+                      return (
+                        <div
+                          key={rm.id}
+                          onClick={() => {
+                            if (!isCurrent) {
+                              setRoomId(rm.id);
+                              setActiveTab("expenses");
+                            }
+                          }}
+                          className={`p-3.5 rounded-2xl border flex justify-between items-center transition ${
+                            isCurrent
+                              ? "bg-[#EFF6F2] border-[#4E8C6F] shadow-2xs"
+                              : "bg-slate-50/80 border-slate-200/80 hover:border-emerald-300 cursor-pointer"
+                          }`}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="flex items-center gap-2">
+                              {isCurrent && <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0"></span>}
+                              <p className="font-extrabold text-slate-800 text-sm truncate">
+                                {isCurrent ? tripName : rm.name}
+                              </p>
+                            </div>
+                            <p className="text-xs text-slate-500 font-mono mt-0.5">
+                              房間代碼 : #{rm.id}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {isCurrent ? (
+                              <span className="bg-[#4E8C6F] text-white text-xs font-bold px-3.5 py-1.5 rounded-full shadow-2xs">
+                                使用中
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRoomId(rm.id);
+                                    setActiveTab("expenses");
+                                  }}
+                                  className="bg-white hover:bg-emerald-50 text-[#3B6E52] border border-emerald-200 text-xs font-bold px-3.5 py-1.5 rounded-full shadow-2xs transition"
+                                >
+                                  切換
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => removeSavedRoomFromList(rm.id, e)}
+                                  title="從列表移除紀錄"
+                                  className="w-7 h-7 rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 flex items-center justify-center font-bold"
+                                >
+                                  ×
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 開設新旅程房間 */}
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <div className="flex justify-between items-center">
                     <h3 className="font-extrabold text-slate-800 text-sm">✨ 開設新旅程房間</h3>
                     <span className="text-[11px] bg-[#EFF6F2] text-[#3B6E52] px-2.5 py-0.5 rounded-full font-bold">自動配發 6 位防撞代碼</span>
@@ -1962,6 +2129,7 @@
                   </form>
                 </div>
 
+                {/* 輸入代碼加入現有房間 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <div className="flex justify-between items-center">
                     <h3 className="font-extrabold text-slate-800 text-sm">🚪 輸入代碼加入現有房間</h3>
@@ -1973,16 +2141,17 @@
                   </form>
                 </div>
 
+                {/* 當前旅程名稱 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-2">
                   <h3 className="font-extrabold text-slate-800 text-sm">✏️ 當前旅程名稱 (改完自動同步)</h3>
                   <input type="text" value={tripName} onChange={e => setTripName(e.target.value)} onBlur={handleTripNameBlur} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
                 </div>
 
-                {/* 同行成員管理 (新增「✏️ 改名」全局替換按鈕) */}
+                {/* 同行成員管理 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <div>
                     <h3 className="font-extrabold text-slate-800 text-sm">👥 同行成員名單 ({members.length}人)</h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5">撳「✏️」可全局修改名字（所有歷史開支自動同步換名）</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">撳「✏️ 改名」可全局修改名字（所有歷史開支自動同步換名）</p>
                   </div>
                   <div className="flex gap-2">
                     <input type="text" placeholder="新增成員名字" value={newMemberName} onChange={e => setNewMemberName(e.target.value)} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2" />
@@ -2166,7 +2335,6 @@
                   <button type="button" onClick={() => setEditingExpense(null)} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
                 </div>
 
-                {/* 日期與分類 */}
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-xs font-bold text-slate-500">日期：</label>
                   <input
@@ -2369,7 +2537,6 @@
                   </>
                 )}
 
-                {/* 底部操作列：左邊垃圾桶刪除 (Double Confirm) + 右邊儲存修改 */}
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                   <button
                     type="button"
@@ -2430,7 +2597,7 @@
             </div>
           )}
 
-          {/* 公數錢包注資彈窗 (Pool Money Modal - 已加入日期選擇 + 純數字鍵盤) */}
+          {/* 公數錢包注資彈窗 (已刪除 Common Fund 字眼) */}
           {showPoolModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 backdrop-blur-xs px-5">
               <form onSubmit={handleAddPoolTopUp} className="bg-white rounded-[28px] p-5 w-full max-w-sm shadow-2xl border border-emerald-50 space-y-4">
@@ -2438,14 +2605,13 @@
                   <div className="flex items-center gap-2">
                     <span className="w-9 h-9 rounded-2xl bg-teal-100 text-teal-700 flex items-center justify-center text-lg">👛</span>
                     <div>
-                      <h3 className="text-base font-extrabold text-slate-800">公數錢包注資 (Common Fund)</h3>
+                      <h3 className="text-base font-extrabold text-slate-800">公數錢包注資</h3>
                       <p className="text-[11px] text-slate-400">大家預先或旅途中夾錢，買飛/食飯直接扣公數</p>
                     </div>
                   </div>
                   <button type="button" onClick={() => setShowPoolModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
                 </div>
 
-                {/* 新增：注資日期選擇 */}
                 <div className="flex items-center justify-between bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200/80">
                   <label className="text-xs font-bold text-slate-600">📅 注資日期 (可選旅途中日期)：</label>
                   <input
@@ -2568,7 +2734,7 @@
             </div>
           )}
 
-          {/* 底部導覽列 (第 3 個欄位已改名為「設定」) */}
+          {/* 底部導覽列 */}
           <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-slate-100 px-6 py-2.5 flex justify-around items-center z-30 sm:rounded-b-[42px] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]">
             <button onClick={() => setActiveTab("expenses")} className="flex flex-col items-center py-1 px-3 relative group">
               <svg className={`w-6 h-6 transition ${activeTab === 'expenses' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill={activeTab === 'expenses' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
