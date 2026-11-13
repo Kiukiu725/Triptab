@@ -12,7 +12,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#E6F2EC" />
 
-  <!-- App Logo 設定 (優先讀取你上傳嘅 icon.png，並內建同款 SVG 備用) -->
+  <!-- App Logo 設定 -->
   <link rel="apple-touch-icon" href="icon.png" />
   <link rel="icon" type="image/png" href="icon.png" />
 
@@ -86,7 +86,7 @@
 
     const DEFAULT_MEMBERS = ["我", "老公", "奶奶", "老爺", "叔仔"];
 
-    // 分類圖示與配色 (對應圖一 Overview 圓形圖示風格)
+    // 分類圖示與配色
     const CATEGORY_META = {
       "餐飲": { icon: "🍱", bg: "bg-emerald-100 text-emerald-700" },
       "交通": { icon: "🚗", bg: "bg-blue-100 text-blue-700" },
@@ -97,7 +97,7 @@
       "雜項": { icon: "💡", bg: "bg-slate-100 text-slate-700" }
     };
 
-    // 產生 6 位數隨機房間代碼 (避免撞房)
+    // 產生 6 位數隨機房間代碼
     const generateRoomCode = () => {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       let result = "";
@@ -124,7 +124,7 @@
       return newRandomCode;
     };
 
-    // 內建你指定嘅圖二鼠尾草綠行李牌單據 Logo (同時支援讀取 icon.png)
+    // 內建行李牌單據 Logo (同時支援讀取 icon.png)
     const TripTabLogo = ({ className = "w-11 h-11" }) => {
       const [imgErr, setImgErr] = useState(false);
       if (!imgErr) {
@@ -140,22 +140,14 @@
       return (
         <svg viewBox="0 0 120 120" className={`${className} rounded-2xl shadow-sm flex-shrink-0`}>
           <rect width="120" height="120" rx="28" fill="#6F8C74" />
-          {/* 吊繩 */}
           <path d="M60 36 C58 22, 76 16, 77 25 C78 33, 62 34, 60 40" fill="none" stroke="#DFC3A4" strokeWidth="3.5" strokeLinecap="round" />
-          {/* 行李牌單據主體 */}
           <path d="M48 32 L72 32 L82 44 L82 94 L75 88 L68 94 L60 88 L52 94 L45 88 L38 94 L38 44 Z" fill="#F9EFE1" />
-          {/* 右側陰影折角感 */}
           <path d="M60 32 L72 32 L82 44 L82 94 L75 88 L68 94 L60 88 Z" fill="#EFE0CA" opacity="0.65" />
-          {/* 打孔圓圈 */}
           <circle cx="60" cy="42" r="6" fill="#6F8C74" stroke="#D7B899" strokeWidth="3" />
-          {/* 垂直與水平虛線 */}
           <line x1="60" y1="53" x2="60" y2="85" stroke="#6F8C74" strokeWidth="2.5" strokeDasharray="4 4" strokeLinecap="round" />
           <line x1="42" y1="77" x2="76" y2="77" stroke="#6F8C74" strokeWidth="2.5" strokeDasharray="4 4" strokeLinecap="round" />
-          {/* 飛機小圖示 */}
           <path d="M46 68 L53 64 L55 66 L51 71 L53 74 L51 75 L48 72 L45 73 L44 72 L46 70 Z" fill="#D5B696" />
-          {/* 星星裝飾 */}
           <path d="M70 53 L71.5 56.5 L75 58 L71.5 59.5 L70 63 L68.5 59.5 L65 58 L68.5 56.5 Z" fill="#D5B696" />
-          {/* 剪刀小圖示 */}
           <circle cx="74" cy="74" r="2.2" fill="none" stroke="#6F8C74" strokeWidth="1.8" />
           <circle cx="74" cy="80" r="2.2" fill="none" stroke="#6F8C74" strokeWidth="1.8" />
           <line x1="68" y1="79" x2="72.5" y2="75" stroke="#6F8C74" strokeWidth="1.8" strokeLinecap="round" />
@@ -165,19 +157,16 @@
     };
 
     function App() {
-      // 房間切換與開設狀態
       const [roomId, setRoomId] = useState(getInitialRoom);
       const [roomInput, setRoomInput] = useState("");
       const [newRoomCustomName, setNewRoomCustomName] = useState("");
       const [syncStatus, setSyncStatus] = useState("connecting");
 
-      // 旅程雲端同步資料
       const [tripName, setTripName] = useState("新旅程記帳 ✈️");
       const [members, setMembers] = useState(DEFAULT_MEMBERS);
       const [expenses, setExpenses] = useState([]);
       const [customRates, setCustomRates] = useState({});
 
-      // UI 狀態
       const [activeTab, setActiveTab] = useState("expenses");
       const [showAddForm, setShowAddForm] = useState(false);
       const [newMemberName, setNewMemberName] = useState("");
@@ -186,10 +175,8 @@
       const [newCurCode, setNewCurCode] = useState("");
       const [newCurRate, setNewCurRate] = useState("");
 
-      // 刪除確認彈窗狀態 (存放準備刪除嘅開支物件)
       const [expenseToDelete, setExpenseToDelete] = useState(null);
 
-      // 表單輸入
       const [title, setTitle] = useState("");
       const [amount, setAmount] = useState("");
       const [currency, setCurrency] = useState("JPY");
@@ -197,12 +184,10 @@
       const [splitWith, setSplitWith] = useState(DEFAULT_MEMBERS);
       const [category, setCategory] = useState("餐飲");
 
-      // 合併即時匯率與房間自訂匯率
       const rates = useMemo(() => {
         return { ...liveRates, ...customRates };
       }, [liveRates, customRates]);
 
-      // 1. 載入即時公開匯率 API
       useEffect(() => {
         fetch("https://open.er-api.com/v6/latest/HKD")
           .then(res => res.json())
@@ -227,7 +212,6 @@
           });
       }, []);
 
-      // 2. 監聽當前 Firebase 房間數據
       useEffect(() => {
         setSyncStatus("connecting");
         localStorage.setItem("last_travel_room", roomId);
@@ -280,7 +264,6 @@
         return () => roomRef.off("value", handleValue);
       }, [roomId]);
 
-      // 建立全新隨機 6 位數房間 + 自訂旅程名稱
       const handleCreateNewRoom = (e) => {
         e.preventDefault();
         const customTitle = newRoomCustomName.trim();
@@ -300,11 +283,10 @@
           setRoomId(newCode);
           setNewRoomCustomName("");
           setActiveTab("expenses");
-          alert(`🎉 成功建立新房間！\n\n旅程名稱：${customTitle}\n專屬 6 位房號：${newCode}\n\n你可以隨時撳「🔗 邀請入房」Share 畀同行朋友！`);
+          alert(`🎉 成功建立新房間！\n\n旅程名稱：${customTitle}\n專屬 6 位房號：${newCode}`);
         });
       };
 
-      // 憑代碼加入現有房間
       const handleSwitchRoom = (e) => {
         e.preventDefault();
         const clean = sanitizeRoomId(roomInput);
@@ -320,17 +302,15 @@
             setActiveTab("expenses");
             alert(`✅ 成功進入房間：${data.tripName || clean}（房號：${clean}）`);
           } else {
-            alert(`❌ 搵唔到房號「${clean}」，請檢查代碼有冇打錯！\n（如果想開新旅程，請用上面「✨ 開設新旅程房間」功能）`);
+            alert(`❌ 搵唔到房號「${clean}」，請檢查代碼有冇打錯！`);
           }
         });
       };
 
-      // 更新雲端旅程名稱
       const handleTripNameBlur = () => {
         db.ref(`rooms/${roomId}/tripName`).set(tripName);
       };
 
-      // 新增開支到雲端
       const handleAddExpense = (e) => {
         e.preventDefault();
         if (!title || !amount || splitWith.length === 0) return;
@@ -351,19 +331,16 @@
         setShowAddForm(false);
       };
 
-      // 觸發刪除確認視窗
       const requestDeleteExpense = (exp) => {
         setExpenseToDelete(exp);
       };
 
-      // 確認刪除雲端開支
       const confirmDeleteExpense = () => {
         if (!expenseToDelete) return;
         db.ref(`rooms/${roomId}/expenses/${expenseToDelete.id}`).remove();
         setExpenseToDelete(null);
       };
 
-      // 新增成員到雲端
       const handleAddMember = () => {
         const name = newMemberName.trim();
         if (!name || members.includes(name)) return;
@@ -373,7 +350,6 @@
         setNewMemberName("");
       };
 
-      // 移除成員 (加入防誤刪確認)
       const handleRemoveMember = (name) => {
         if (members.length <= 2) return;
         if (!window.confirm(`確定要從房間移除成員「${name}」嗎？`)) return;
@@ -381,14 +357,12 @@
         db.ref(`rooms/${roomId}/members`).set(updated);
       };
 
-      // 更新匯率並同步至房間
       const handleRateChange = (cur, val) => {
         const num = parseFloat(val);
         if (isNaN(num) || num <= 0) return;
         db.ref(`rooms/${roomId}/customRates/${cur}`).set(num);
       };
 
-      // 新增自訂貨幣
       const handleAddCustomCurrency = (e) => {
         e.preventDefault();
         const code = newCurCode.trim().toUpperCase();
@@ -400,18 +374,15 @@
         setNewCurRate("");
       };
 
-      // 轉換為港幣
       const toHKD = (amt, curr) => {
         const r = rates[curr] || 1;
         return amt * r;
       };
 
-      // 總花費計算
       const totalHKD = useMemo(() => {
         return expenses.reduce((acc, exp) => acc + toHKD(Number(exp.amount), exp.currency), 0);
       }, [expenses, rates]);
 
-      // 結算演算法
       const settlement = useMemo(() => {
         const balances = {};
         members.forEach(m => balances[m] = 0);
@@ -466,33 +437,25 @@
         return { balances, transactions };
       }, [expenses, members, rates]);
 
-      // 1. 邀請朋友進入當前房間 (連房間代碼)
       const shareRoomLink = () => {
         const shareUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(roomId)}`;
         const msg = `✈️ 一齊用 TripTab 記低「${tripName}」旅行夾錢開支！\n🔑 房間代碼：${roomId}\n👉 直接撳連結自動入房：\n${shareUrl}`;
         if (navigator.share) {
-          navigator.share({
-            title: `TripTab - ${tripName}`,
-            text: msg
-          }).catch(() => {});
+          navigator.share({ title: `TripTab - ${tripName}`, text: msg }).catch(() => {});
         } else {
           navigator.clipboard.writeText(msg);
           alert(`已複製邀請連結！直接貼去 WhatsApp 群組，朋友一撳就會自動入房「${roomId}」📲`);
         }
       };
 
-      // 2. 純 Share App (唔連房間 ID，朋友不會入咗你間房)
       const shareCleanApp = () => {
         const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-        const msg = `✈️ 推薦呢個超好用嘅旅行夾錢記帳 App「TripTab」！支援多國即時匯率同自動計數，撳呢條 Link 即可免費開自己嘅旅程房間：\n${cleanUrl}`;
+        const msg = `✈️ 推薦呢個超好用嘅旅行夾錢記帳 App「TripTab」！支援多國即時匯率同自動計數：\n${cleanUrl}`;
         if (navigator.share) {
-          navigator.share({
-            title: "TripTab - 旅行夾錢記帳 App",
-            text: msg
-          }).catch(() => {});
+          navigator.share({ title: "TripTab - 旅行夾錢記帳 App", text: msg }).catch(() => {});
         } else {
           navigator.clipboard.writeText(msg);
-          alert(`已複製乾淨嘅 TripTab 推薦連結（唔包含你嘅房間資料）！可以放心 Share 畀其他朋友開新房用 📲`);
+          alert(`已複製乾淨嘅 TripTab 推薦連結！`);
         }
       };
 
@@ -511,15 +474,14 @@
         text += `------------------------\n`;
         text += `大家 check 下有冇問題！🍻`;
         navigator.clipboard.writeText(text);
-        alert("已複製 WhatsApp 結算清單！可以直接貼去群組！📲");
+        alert("已複製 WhatsApp 結算清單！");
       };
 
       return (
         <div className="max-w-md mx-auto min-h-screen bg-[#EFF6F2] flex flex-col shadow-2xl relative overflow-x-hidden pb-28 sm:my-4 sm:rounded-[42px] border border-white/60">
           
-          {/* 頂部大自然森林湖景插畫區 (參考圖一 Layout & 色調) */}
+          {/* 頂部大自然森林湖景插畫區 */}
           <div className="relative pt-6 pb-20 px-6 overflow-hidden">
-            {/* SVG 森林山水晨光背景圖案 */}
             <svg className="absolute inset-0 w-full h-full object-cover pointer-events-none" viewBox="0 0 400 285" preserveAspectRatio="xMidYMid slice">
               <defs>
                 <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
@@ -534,22 +496,16 @@
                 </linearGradient>
               </defs>
               <rect width="400" height="285" fill="url(#skyGrad)" />
-              {/* 柔和晨光太陽 */}
               <circle cx="255" cy="95" r="34" fill="#FFFDF2" opacity="0.95" />
               <circle cx="255" cy="95" r="55" fill="#FFFDF2" opacity="0.35" />
-              {/* 遠山層次 */}
               <path d="M-20 190 Q85 115 210 175 T420 145 L420 285 L-20 285 Z" fill="#C2DEC8" opacity="0.7" />
               <path d="M130 195 Q275 115 420 165 L420 285 L130 285 Z" fill="#9DC4A7" opacity="0.85" />
-              {/* 左側翠綠山坡 */}
               <path d="M-20 145 Q90 130 185 205 L-20 240 Z" fill="#78AA82" />
-              {/* 靜謐湖面與倒影 */}
               <path d="M70 205 L420 190 L420 265 L40 265 Z" fill="url(#lakeGrad)" />
               <ellipse cx="250" cy="215" rx="55" ry="3" fill="#FFFFFF" opacity="0.65" />
               <ellipse cx="235" cy="226" rx="35" ry="2" fill="#FFFFFF" opacity="0.5" />
-              {/* 前景草坡 */}
               <path d="M-20 195 Q115 190 220 260 L-20 285 Z" fill="#518763" />
               <path d="M250 245 Q335 205 420 220 L420 285 L210 285 Z" fill="#467A57" />
-              {/* 左上角垂墜樹枝與葉片剪影 (呼應圖一左上樹葉) */}
               <path d="M0 78 Q55 68 115 98" stroke="#3E6E4C" strokeWidth="2" fill="none" opacity="0.65" />
               <ellipse cx="32" cy="76" rx="11" ry="4.5" transform="rotate(-18 32 76)" fill="#588E67" opacity="0.8" />
               <ellipse cx="64" cy="81" rx="12" ry="4.5" transform="rotate(12 64 81)" fill="#437652" opacity="0.8" />
@@ -557,7 +513,6 @@
               <ellipse cx="48" cy="89" rx="9" ry="3.5" transform="rotate(-28 48 89)" fill="#6FA47C" opacity="0.75" />
             </svg>
 
-            {/* 頂部 Header (對應圖一 "After" 標題與右上角日期膠囊) */}
             <div className="relative z-10 flex justify-between items-start gap-2">
               <div className="flex items-center gap-3">
                 <TripTabLogo className="w-12 h-12" />
@@ -577,7 +532,6 @@
                 </div>
               </div>
 
-              {/* 右上角膠囊標籤 (房號 + 匯率更新時間) */}
               <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                 <span className="bg-white/85 backdrop-blur-md border border-slate-200/80 text-slate-700 text-xs font-mono font-bold px-3 py-1.5 rounded-full shadow-sm">
                   #{roomId}
@@ -589,11 +543,10 @@
             </div>
           </div>
 
-          {/* 懸浮白色總覽卡片 (對應圖一中間張 High Productivity 白卡) */}
+          {/* 懸浮白色總覽卡片 */}
           <div className="px-5 -mt-12 relative z-20">
             <div className="bg-white rounded-[26px] p-4 shadow-lg shadow-emerald-950/5 border border-emerald-50">
               <div className="flex items-center gap-3.5">
-                {/* 綠色圓形勾號 Icon */}
                 <div className="w-12 h-12 rounded-full bg-[#529B6A] text-white flex items-center justify-center shadow-sm flex-shrink-0">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.8" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -610,18 +563,11 @@
                 </div>
               </div>
 
-              {/* 分享按鈕雙組合：邀請入房 vs 純 Share App */}
               <div className="grid grid-cols-2 gap-2 mt-3.5 pt-3 border-t border-slate-100">
-                <button
-                  onClick={shareRoomLink}
-                  className="bg-[#4E8C6F] hover:bg-[#3F765C] text-white text-xs font-bold py-2 px-3 rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
-                >
+                <button onClick={shareRoomLink} className="bg-[#4E8C6F] hover:bg-[#3F765C] text-white text-xs font-bold py-2 px-3 rounded-xl shadow-sm transition flex items-center justify-center gap-1.5">
                   <span>🔗 邀請朋友入房</span>
                 </button>
-                <button
-                  onClick={shareCleanApp}
-                  className="bg-[#EEF5F0] hover:bg-[#E1EDE5] text-[#3B6E52] text-xs font-bold py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5"
-                >
+                <button onClick={shareCleanApp} className="bg-[#EEF5F0] hover:bg-[#E1EDE5] text-[#3B6E52] text-xs font-bold py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5">
                   <span>📤 純 Share App</span>
                 </button>
               </div>
@@ -637,7 +583,7 @@
           {/* 主內容區 */}
           <div className="px-5 pt-5 flex-1 space-y-4">
             
-            {/* TAB 1: 記帳明細 (對應圖一 Today's Overview 區塊) */}
+            {/* TAB 1: 記帳明細 */}
             {activeTab === "expenses" && (
               <div className="space-y-3.5">
                 <div className="flex justify-between items-center px-1">
@@ -645,15 +591,11 @@
                     <h2 className="text-base font-extrabold text-slate-800">Today's Overview</h2>
                     <p className="text-[11px] text-slate-500">雲端實時開支明細 ({expenses.length} 筆)</p>
                   </div>
-                  <button
-                    onClick={() => setShowAddForm(!showAddForm)}
-                    className="bg-[#4E8C6F] text-white text-xs font-bold px-3.5 py-2 rounded-full shadow-sm hover:bg-[#3F765C] transition"
-                  >
+                  <button onClick={() => setShowAddForm(!showAddForm)} className="bg-[#4E8C6F] text-white text-xs font-bold px-3.5 py-2 rounded-full shadow-sm hover:bg-[#3F765C] transition">
                     {showAddForm ? "✕ 收起表單" : "＋ 記一筆新開支"}
                   </button>
                 </div>
 
-                {/* 新增開支摺疊表單 */}
                 {showAddForm && (
                   <form onSubmit={handleAddExpense} className="bg-white p-4 rounded-[24px] shadow-md border border-emerald-100/80 space-y-3 animate-fadeIn">
                     <div className="flex justify-between items-center">
@@ -717,15 +659,11 @@
                   </form>
                 )}
 
-                {/* 對應圖一嘅圓角橫向項目卡片列表 */}
                 <div className="space-y-2.5">
                   {expenses.length === 0 ? (
                     <div className="bg-white/90 p-8 rounded-[24px] border border-dashed border-emerald-200 text-center text-xs text-slate-400 space-y-2">
                       <p>🌿 呢個房間暫時未有開支記錄</p>
-                      <button
-                        onClick={() => setShowAddForm(true)}
-                        className="text-[#4E8C6F] font-bold underline"
-                      >
+                      <button onClick={() => setShowAddForm(true)} className="text-[#4E8C6F] font-bold underline">
                         撳呢度入第一筆數啦！
                       </button>
                     </div>
@@ -756,7 +694,6 @@
                                 </p>
                               )}
                             </div>
-                            {/* 垃圾桶刪除按鈕 (觸發確認彈窗) */}
                             <button
                               type="button"
                               onClick={() => requestDeleteExpense(exp)}
@@ -831,7 +768,6 @@
             {/* TAB 3: 房間與成員管理 */}
             {activeTab === "rooms" && (
               <div className="space-y-4">
-                {/* 1. 開設全新隨機代碼房間 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-emerald-100 space-y-3">
                   <div className="flex justify-between items-center">
                     <h3 className="font-extrabold text-slate-800 text-sm">✨ 開設新旅程房間</h3>
@@ -843,7 +779,6 @@
                   </form>
                 </div>
 
-                {/* 2. 輸入 6 位代碼加入現有房間 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <div className="flex justify-between items-center">
                     <h3 className="font-extrabold text-slate-800 text-sm">🚪 輸入代碼加入現有房間</h3>
@@ -855,13 +790,11 @@
                   </form>
                 </div>
 
-                {/* 3. 修改當前旅程名稱 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-2">
                   <h3 className="font-extrabold text-slate-800 text-sm">✏️ 當前旅程名稱 (改完自動同步)</h3>
                   <input type="text" value={tripName} onChange={e => setTripName(e.target.value)} onBlur={handleTripNameBlur} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
                 </div>
 
-                {/* 4. 房間成員管理 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <h3 className="font-extrabold text-slate-800 text-sm">👥 同行成員名單 ({members.length}人)</h3>
                   <div className="flex gap-2">
@@ -907,7 +840,7 @@
 
           </div>
 
-          {/* 刪除開支確認彈窗 (防誤觸 Modal) */}
+          {/* 刪除開支確認彈窗 */}
           {expenseToDelete && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 backdrop-blur-xs px-6">
               <div className="bg-white rounded-[28px] p-5 w-full max-w-xs shadow-2xl border border-emerald-50 text-center space-y-4">
@@ -928,18 +861,10 @@
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-2.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setExpenseToDelete(null)}
-                    className="py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
-                  >
+                  <button type="button" onClick={() => setExpenseToDelete(null)} className="py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">
                     取消
                   </button>
-                  <button
-                    type="button"
-                    onClick={confirmDeleteExpense}
-                    className="py-2.5 rounded-xl text-xs font-bold bg-rose-500 text-white hover:bg-rose-600 shadow-sm transition"
-                  >
+                  <button type="button" onClick={confirmDeleteExpense} className="py-2.5 rounded-xl text-xs font-bold bg-rose-500 text-white hover:bg-rose-600 shadow-sm transition">
                     確定刪除
                   </button>
                 </div>
@@ -947,10 +872,8 @@
             </div>
           )}
 
-          {/* 底部圓角導覽列 (完全仿照圖一底部 4 個 Icon + 綠色小圓點指示器) */}
+          {/* 底部導覽列 */}
           <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-slate-100 px-6 py-2.5 flex justify-around items-center z-30 sm:rounded-b-[42px] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]">
-            
-            {/* 1. 首頁開支明細 (Home Icon) */}
             <button onClick={() => setActiveTab("expenses")} className="flex flex-col items-center py-1 px-3 relative group">
               <svg className={`w-6 h-6 transition ${activeTab === 'expenses' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill={activeTab === 'expenses' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1v-9.5z" />
@@ -959,7 +882,6 @@
               {activeTab === "expenses" && <span className="w-1.5 h-1.5 rounded-full bg-[#3D7A5A] mt-0.5"></span>}
             </button>
 
-            {/* 2. 結算標靶 (Target Icon) */}
             <button onClick={() => setActiveTab("settle")} className="flex flex-col items-center py-1 px-3 relative group">
               <svg className={`w-6 h-6 transition ${activeTab === 'settle' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" />
@@ -970,7 +892,6 @@
               {activeTab === "settle" && <span className="w-1.5 h-1.5 rounded-full bg-[#3D7A5A] mt-0.5"></span>}
             </button>
 
-            {/* 3. 房間與成員切換 (Circle Portal Icon) */}
             <button onClick={() => setActiveTab("rooms")} className="flex flex-col items-center py-1 px-3 relative group">
               <svg className={`w-6 h-6 transition ${activeTab === 'rooms' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="8.5" />
@@ -980,7 +901,6 @@
               {activeTab === "rooms" && <span className="w-1.5 h-1.5 rounded-full bg-[#3D7A5A] mt-0.5"></span>}
             </button>
 
-            {/* 4. 匯率統計設定 (Bar Chart Icon) */}
             <button onClick={() => setActiveTab("rates")} className="flex flex-col items-center py-1 px-3 relative group">
               <svg className={`w-6 h-6 transition ${activeTab === 'rates' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 20v-5M12 20v-9M18 20V6" />
@@ -988,7 +908,6 @@
               <span className={`text-[10px] font-bold mt-0.5 ${activeTab === 'rates' ? 'text-[#3D7A5A]' : 'text-slate-400'}`}>匯率</span>
               {activeTab === "rates" && <span className="w-1.5 h-1.5 rounded-full bg-[#3D7A5A] mt-0.5"></span>}
             </button>
-
           </div>
 
         </div>
