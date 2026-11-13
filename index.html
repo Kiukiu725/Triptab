@@ -191,7 +191,7 @@
       const [splitWith, setSplitWith] = useState(DEFAULT_MEMBERS);
       const [category, setCategory] = useState("餐飲");
       const [expDate, setExpDate] = useState(() => new Date().toISOString().split("T")[0]);
-      const [splitMode, setSplitMode] = useState("equal"); // 'equal' | 'custom'
+      const [splitMode, setSplitMode] = useState("equal");
       const [customSplitsInput, setCustomSplitsInput] = useState({});
 
       // 公數錢包注資表單狀態
@@ -219,7 +219,7 @@
         };
       }, []);
 
-      // 抓取網上即時匯率函數 (可隨時撳掣 Refresh)
+      // 抓取網上即時匯率函數
       const fetchLiveRatesFromAPI = (resetCustom = false) => {
         setIsRefreshingRates(true);
         return fetch("https://open.er-api.com/v6/latest/HKD")
@@ -242,7 +242,6 @@
               setRateUpdatedText(timeStr);
 
               if (resetCustom) {
-                // 只保留不在公開 API 內嘅特殊自訂貨幣
                 const remainingCustom = {};
                 Object.keys(customRates).forEach(code => {
                   if (!data.rates[code] && code !== "HKD") {
@@ -270,7 +269,6 @@
         setSyncStatus("connecting");
         localStorage.setItem("last_travel_room", roomId);
 
-        // 先讀取本地緩存，確保離線秒開
         const cachedStr = localStorage.getItem(`triptab_cache_${roomId}`);
         if (cachedStr) {
           try {
@@ -307,7 +305,6 @@
             setExpenses(expList);
             setCustomRates(cRates);
 
-            // 儲存離線緩存
             localStorage.setItem(`triptab_cache_${roomId}`, JSON.stringify({
               tripName: tName,
               members: loadedMembers,
@@ -341,8 +338,51 @@
         return amt * r;
       };
 
+      // 計算公數錢包 (Pool Money) 各貨幣餘額與總注入/總支出
+      const poolSummary = useMemo(() => {
+        const byCurrency = {};
+        let totalTopUpHKD = 0;
+        let totalSpentFromPoolHKD = 0;
+
+        expenses.forEach(exp => {
+          const cur = exp.currency || "HKD";
+          const amt = Number(exp.amount) || 0;
+          if (exp.type === "pool_topup") {
+            if (!byCurrency[cur]) byCurrency[cur] = { topup: 0, spent: 0, balance: 0 };
+            byCurrency[cur].topup += amt;
+            byCurrency[cur].balance += amt;
+            totalTopUpHKD += toHKD(amt, cur);
+          } else if (exp.payer === POOL_PAYER_KEY) {
+            if (!byCurrency[cur]) byCurrency[cur] = { topup: 0, spent: 0, balance: 0 };
+            byCurrency[cur].spent += amt;
+            byCurrency[cur].balance -= amt;
+            totalSpentFromPoolHKD += toHKD(amt, cur);
+          }
+        });
+
+        const remainHKD = totalTopUpHKD - totalSpentFromPoolHKD;
+        return {
+          byCurrency,
+          totalTopUpHKD,
+          totalSpentFromPoolHKD,
+          remainHKD,
+          hasActivity: Object.keys(byCurrency).length > 0
+        };
+      }, [expenses, rates]);
+
+      // 檢查當前輸入嘅「公數錢包支付」係咪超過公數餘額
+      const currentCurrencyPoolBalance = useMemo(() => {
+        return poolSummary.byCurrency[currency]?.balance || 0;
+      }, [poolSummary, currency]);
+
+      const isPoolInsufficient = useMemo(() => {
+        if (payer !== POOL_PAYER_KEY) return false;
+        const numAmt = parseFloat(amount) || 0;
+        // 如果公數餘額 <= 0，或者輸入金額 > 公數餘額，即視為餘額不足
+        return currentCurrencyPoolBalance <= 0 || numAmt > currentCurrencyPoolBalance + 0.0001;
+      }, [payer, amount, currentCurrencyPoolBalance]);
+
       // 計算每筆開支入面「每個人實際分攤幾多原幣」
-      // 支援：平分模式 + 不等額逐項計模式 (指定部分人金額，其餘人自動平分餘額)
       const getExpenseMemberShares = (exp) => {
         const total = Number(exp.amount) || 0;
         const splits = Array.isArray(exp.splitWith) && exp.splitWith.length > 0 ? exp.splitWith : [];
@@ -428,7 +468,7 @@
       };
 
       // 迷你計數機快捷鍵 (+10%, x1.08, x1.10, ÷2)
-      const applyQuickMath = (multiplier, label) => {
+      const applyQuickMath = (multiplier) => {
         const current = parseFloat(amount);
         if (isNaN(current) || current <= 0) {
           alert("請先喺金額欄輸入咗基本數字先！");
@@ -456,11 +496,25 @@
         return { total, specifiedSum, remainder, unspecified, autoEach };
       }, [amount, splitWith, customSplitsInput]);
 
-      // 提交一般或公數支出
+      // 提交一般或公數支出 (含公數防透支強制攔截)
       const handleAddExpense = (e) => {
         e.preventDefault();
         const numAmt = parseFloat(amount);
         if (!title || isNaN(numAmt) || numAmt <= 0 || splitWith.length === 0) return;
+
+        // 🛡️ 防透支檢查：如果揀咗「公數錢包」，必須確保該貨幣公數餘額足夠
+        if (payer === POOL_PAYER_KEY) {
+          const availablePool = poolSummary.byCurrency[currency]?.balance || 0;
+          if (availablePool <= 0) {
+            alert(`⚠️ 公數錢包目前未有 ${currency} 餘額（現有：${currency} ${availablePool.toLocaleString()}）！\n\n請先撳「＋ 每人注資公數」入錢落公數池，或者改揀某位成員私人墊支。`);
+            return;
+          }
+          if (numAmt > availablePool + 0.0001) {
+            const shortage = Math.round((numAmt - availablePool) * 100) / 100;
+            alert(`⚠️ 公數錢包餘額不足，無法記帳！\n\n• 今次開支：${currency} ${numAmt.toLocaleString()}\n• 公數現有：${currency} ${availablePool.toLocaleString()}\n• 尚欠差額：${currency} ${shortage.toLocaleString()}\n\n請先為公數錢包注資，或者改由成員私人墊支！`);
+            return;
+          }
+        }
 
         let savedCustomSplits = null;
         if (splitMode === "custom") {
@@ -498,7 +552,6 @@
           date: expDate || new Date().toISOString().split("T")[0]
         };
 
-        // 離線優先更新畫面 + 寫入 Firebase
         setExpenses(prev => [newExp, ...prev]);
         db.ref(`rooms/${roomId}/expenses/${id}`).set(newExp);
 
@@ -536,7 +589,17 @@
         setShowPoolModal(false);
       };
 
+      // 刪除前檢查：如果刪除嘅係「公數注資」，檢查會唔會令公數餘額變負數
       const requestDeleteExpense = (exp) => {
+        if (exp.type === "pool_topup") {
+          const cur = exp.currency || "HKD";
+          const curBalance = poolSummary.byCurrency[cur]?.balance || 0;
+          const afterDeleteBalance = curBalance - (Number(exp.amount) || 0);
+          if (afterDeleteBalance < -0.0001) {
+            alert(`⚠️ 無法刪除呢筆「公數注資」！\n\n因為公數錢包入面嘅錢已經洗咗一部分，如果刪走呢筆注資（${cur} ${Number(exp.amount).toLocaleString()}），會令 ${cur} 公數餘額變成負數（${cur} ${Math.round(afterDeleteBalance).toLocaleString()}）。\n\n請先刪除或修改使用公數支付嘅開支項目！`);
+            return;
+          }
+        }
         setExpenseToDelete(exp);
       };
 
@@ -571,7 +634,6 @@
         db.ref(`rooms/${roomId}/customRates/${cur}`).set(num);
       };
 
-      // 單一貨幣還原為網上即時匯率
       const handleResetSingleRate = (cur) => {
         db.ref(`rooms/${roomId}/customRates/${cur}`).remove();
       };
@@ -587,39 +649,7 @@
         setNewCurRate("");
       };
 
-      // 計算公數錢包 (Pool Money) 各貨幣餘額與總注入/總支出
-      const poolSummary = useMemo(() => {
-        const byCurrency = {}; // { JPY: { topup: 50000, spent: 18000, balance: 32000 } }
-        let totalTopUpHKD = 0;
-        let totalSpentFromPoolHKD = 0;
-
-        expenses.forEach(exp => {
-          const cur = exp.currency || "HKD";
-          const amt = Number(exp.amount) || 0;
-          if (exp.type === "pool_topup") {
-            if (!byCurrency[cur]) byCurrency[cur] = { topup: 0, spent: 0, balance: 0 };
-            byCurrency[cur].topup += amt;
-            byCurrency[cur].balance += amt;
-            totalTopUpHKD += toHKD(amt, cur);
-          } else if (exp.payer === POOL_PAYER_KEY) {
-            if (!byCurrency[cur]) byCurrency[cur] = { topup: 0, spent: 0, balance: 0 };
-            byCurrency[cur].spent += amt;
-            byCurrency[cur].balance -= amt;
-            totalSpentFromPoolHKD += toHKD(amt, cur);
-          }
-        });
-
-        const remainHKD = totalTopUpHKD - totalSpentFromPoolHKD;
-        return {
-          byCurrency,
-          totalTopUpHKD,
-          totalSpentFromPoolHKD,
-          remainHKD,
-          hasActivity: Object.keys(byCurrency).length > 0
-        };
-      }, [expenses, rates]);
-
-      // 實際消費總額 (唔計「公數注資」動作本身，只計真正買嘢/食飯開支，包括用公數比嘅開支)
+      // 實際消費總額
       const realExpenses = useMemo(() => {
         return expenses.filter(e => e.type !== "pool_topup");
       }, [expenses]);
@@ -631,7 +661,6 @@
       // 按日期分組 (Day 1, Day 2...) 時間軸計算
       const groupedDays = useMemo(() => {
         if (expenses.length === 0) return [];
-        // 搵出最早嘅日期作為 Day 1
         const allDates = expenses.map(e => e.date || "2026-11-14").sort();
         const firstDateObj = new Date(allDates[0] + "T00:00:00");
 
@@ -656,14 +685,13 @@
           }
         });
 
-        // 最新日期排最前
         return Object.values(groupsMap).sort((a, b) => b.date.localeCompare(a.date));
       }, [expenses, rates]);
 
-      // 結算演算法 (自動兼容：個人墊支 + 公數注資 + 公數支出扣減 + 不等額分帳)
+      // 結算演算法
       const settlement = useMemo(() => {
         const balances = {};
-        const personalConsumption = {}; // 用作「全團大豪客」排行榜
+        const personalConsumption = {};
         members.forEach(m => {
           balances[m] = 0;
           personalConsumption[m] = 0;
@@ -672,7 +700,6 @@
         expenses.forEach(exp => {
           const hkdAmount = toHKD(Number(exp.amount), exp.currency);
 
-          // 情況 A：公數注資 (每位注資者視為墊支咗自己嗰份錢入公數池)
           if (exp.type === "pool_topup") {
             const contribs = (exp.contributors || exp.splitWith || []).filter(p => balances[p] !== undefined);
             if (contribs.length > 0) {
@@ -684,13 +711,10 @@
             return;
           }
 
-          // 情況 B：實際消費項目 (支援個人墊支 或 公數錢包支付)
           const rawShares = getExpenseMemberShares(exp);
           const validSplits = Object.keys(rawShares).filter(p => balances[p] !== undefined);
           if (validSplits.length === 0) return;
 
-          // 如果係某位成員私人墊支，佢獲得全額 Credit
-          // 如果係「公數錢包」支付，Credit 已經喺注資時加咗俾大家，呢度只需扣減各人應付份额
           if (exp.payer !== POOL_PAYER_KEY && balances[exp.payer] !== undefined) {
             balances[exp.payer] += hkdAmount;
           }
@@ -734,7 +758,6 @@
           if (cred.amount === 0) j++;
         }
 
-        // 大豪客排行榜排序
         const spenderLeaderboard = Object.keys(personalConsumption)
           .map(name => ({ name, spentHKD: Math.round(personalConsumption[name]) }))
           .sort((a, b) => b.spentHKD - a.spentHKD);
@@ -742,7 +765,7 @@
         return { balances, transactions, spenderLeaderboard };
       }, [expenses, members, rates]);
 
-      // 旅行消費分類佔比統計 (用於 SVG 圓餅圖)
+      // 旅行消費分類佔比統計
       const categoryChartData = useMemo(() => {
         const map = {};
         realExpenses.forEach(exp => {
@@ -834,7 +857,6 @@
             ].map(escapeCSV).join(",");
           });
 
-        // 加入 \uFEFF BOM 確保手機及電腦 Excel 開啟繁體中文唔會亂碼
         const csvContent = "\uFEFF" + [headers.map(escapeCSV).join(","), ...rows].join("\n");
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
@@ -1078,7 +1100,10 @@
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowPoolModal(true)}
+                  onClick={() => {
+                    setPoolCurrency(currency);
+                    setShowPoolModal(true);
+                  }}
                   className="bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl shadow-2xs flex-shrink-0 transition"
                 >
                   ＋ 每人注資公數
@@ -1122,7 +1147,7 @@
                   </button>
                 </div>
 
-                {/* 新增開支摺疊表單 (含稅率計算器 + 公數支付 + 不等額分帳) */}
+                {/* 新增開支摺疊表單 */}
                 {showAddForm && (
                   <form onSubmit={handleAddExpense} className="bg-white p-4 rounded-[24px] shadow-md border border-emerald-100/80 space-y-3 animate-fadeIn">
                     <div className="flex justify-between items-center gap-2">
@@ -1176,25 +1201,25 @@
                       {/* 稅項 / 服務費一鍵計算器 */}
                       <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 scrollbar-none">
                         <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">🧮 快捷計數：</span>
-                        <button type="button" onClick={() => applyQuickMath(1.1, "+10% 服務費")} className="text-[11px] bg-slate-100 hover:bg-emerald-50 text-slate-700 font-bold px-2.5 py-1 rounded-lg whitespace-nowrap transition">
+                        <button type="button" onClick={() => applyQuickMath(1.1)} className="text-[11px] bg-slate-100 hover:bg-emerald-50 text-slate-700 font-bold px-2.5 py-1 rounded-lg whitespace-nowrap transition">
                           +10% 服務費
                         </button>
-                        <button type="button" onClick={() => applyQuickMath(1.08, "×1.08 輕減稅")} className="text-[11px] bg-slate-100 hover:bg-emerald-50 text-slate-700 font-bold px-2.5 py-1 rounded-lg whitespace-nowrap transition">
+                        <button type="button" onClick={() => applyQuickMath(1.08)} className="text-[11px] bg-slate-100 hover:bg-emerald-50 text-slate-700 font-bold px-2.5 py-1 rounded-lg whitespace-nowrap transition">
                           ×1.08 稅
                         </button>
-                        <button type="button" onClick={() => applyQuickMath(1.10, "×1.10 日本稅")} className="text-[11px] bg-slate-100 hover:bg-emerald-50 text-slate-700 font-bold px-2.5 py-1 rounded-lg whitespace-nowrap transition">
+                        <button type="button" onClick={() => applyQuickMath(1.10)} className="text-[11px] bg-slate-100 hover:bg-emerald-50 text-slate-700 font-bold px-2.5 py-1 rounded-lg whitespace-nowrap transition">
                           ×1.10 稅
                         </button>
-                        <button type="button" onClick={() => applyQuickMath(0.5, "半價 ÷2")} className="text-[11px] bg-slate-100 hover:bg-emerald-50 text-slate-700 font-bold px-2.5 py-1 rounded-lg whitespace-nowrap transition">
+                        <button type="button" onClick={() => applyQuickMath(0.5)} className="text-[11px] bg-slate-100 hover:bg-emerald-50 text-slate-700 font-bold px-2.5 py-1 rounded-lg whitespace-nowrap transition">
                           ÷2 半價
                         </button>
                       </div>
                     </div>
 
-                    {/* 邊個墊支先？ (支援揀「👛 公數錢包」) */}
-                    <div className="text-xs">
+                    {/* 邊個墊支先？ (支援揀「👛 公數錢包」+ 即時餘額防透支提示) */}
+                    <div className="text-xs space-y-1.5">
                       <label className="text-slate-500 font-medium">邊個畀錢 / 墊支先？</label>
-                      <div className="flex gap-1.5 overflow-x-auto py-1.5 scrollbar-none">
+                      <div className="flex gap-1.5 overflow-x-auto py-1 scrollbar-none">
                         <button
                           type="button"
                           onClick={() => setPayer(POOL_PAYER_KEY)}
@@ -1213,6 +1238,38 @@
                           </button>
                         ))}
                       </div>
+
+                      {/* 🛡️ 揀咗「公數錢包」時顯示即時餘額與防透支警告 */}
+                      {payer === POOL_PAYER_KEY && (
+                        <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${isPoolInsufficient ? "bg-rose-50 border-rose-200 text-rose-700" : "bg-teal-50/70 border-teal-200 text-teal-800"}`}>
+                          <div className="min-w-0">
+                            <p className="font-extrabold text-[11px]">
+                              👛 {currency} 公數可用餘額：{currency} {Math.round(currentCurrencyPoolBalance).toLocaleString()}
+                            </p>
+                            {isPoolInsufficient ? (
+                              <p className="text-[10px] font-semibold text-rose-600 mt-0.5">
+                                {currentCurrencyPoolBalance <= 0
+                                  ? `⚠️ 目前未有 ${currency} 公數餘額，請先注資或改揀成員墊支！`
+                                  : `⚠️ 支出金額大過公數餘額（尚欠 ${currency} ${Math.round(((parseFloat(amount) || 0) - currentCurrencyPoolBalance) * 100) / 100}）！`}
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-teal-600 mt-0.5">
+                                扣減後將剩餘：{currency} {Math.round((currentCurrencyPoolBalance - (parseFloat(amount) || 0)) * 100) / 100}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPoolCurrency(currency);
+                              setShowPoolModal(true);
+                            }}
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold whitespace-nowrap flex-shrink-0 ${isPoolInsufficient ? "bg-rose-600 text-white shadow-2xs" : "bg-white text-teal-700 border border-teal-200"}`}
+                          >
+                            ＋ 立即注資 {currency}
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* 邊個夾份 + 平分 vs 逐樣計切換 */}
@@ -1252,7 +1309,7 @@
                         })}
                       </div>
 
-                      {/* 分帳模式切換：平均平分 vs 不等額逐樣計 */}
+                      {/* 分帳模式切換 */}
                       <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl mt-2">
                         <button
                           type="button"
@@ -1270,7 +1327,7 @@
                         </button>
                       </div>
 
-                      {/* 不等額分帳輸入區 (支援填部分人，其餘自動平分) */}
+                      {/* 不等額分帳輸入區 */}
                       {splitMode === "custom" && (
                         <div className="bg-[#F5F9F6] p-3 rounded-2xl border border-emerald-100 space-y-2">
                           <div className="flex justify-between items-center text-[11px]">
@@ -1286,7 +1343,6 @@
                           <div className="space-y-1.5">
                             {splitWith.map(m => {
                               const rawVal = customSplitsInput[m] ?? "";
-                              const isAuto = rawVal === "";
                               return (
                                 <div key={m} className="flex items-center justify-between gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200/80">
                                   <span className="font-bold text-slate-700 text-xs">{m}</span>
@@ -1315,8 +1371,16 @@
                       )}
                     </div>
 
-                    <button type="submit" className="w-full bg-[#4E8C6F] text-white font-bold py-2.5 rounded-xl shadow-md hover:bg-[#3F765C] transition">
-                      同步加入開支 ☁️
+                    <button
+                      type="submit"
+                      disabled={isPoolInsufficient}
+                      className={`w-full font-bold py-2.5 rounded-xl shadow-md transition ${
+                        isPoolInsufficient
+                          ? "bg-slate-300 text-slate-500 cursor-not-allowed"
+                          : "bg-[#4E8C6F] text-white hover:bg-[#3F765C]"
+                      }`}
+                    >
+                      {isPoolInsufficient ? "⚠️ 公數餘額不足，無法記帳" : "同步加入開支 ☁️"}
                     </button>
                   </form>
                 )}
@@ -1337,7 +1401,6 @@
 
                       return (
                         <div key={dayGroup.date} className="space-y-2">
-                          {/* Day 標題橫幅 (可點擊摺疊) */}
                           <button
                             type="button"
                             onClick={() => setCollapsedDays(prev => ({ ...prev, [dayGroup.date]: !prev[dayGroup.date] }))}
@@ -1364,7 +1427,6 @@
                             </div>
                           </button>
 
-                          {/* 當日帳目卡片 */}
                           {!isCollapsed && (
                             <div className="space-y-2 pl-1">
                               {dayGroup.items.map(exp => {
@@ -1440,7 +1502,6 @@
             {/* TAB 2: 結算夾錢 + IG Story 消費圓餅圖 & 大豪客排行榜 */}
             {activeTab === "settle" && (
               <div className="space-y-4">
-                {/* 1. 最簡化過數清單 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white">
                   <div className="flex justify-between items-center mb-3">
                     <div>
@@ -1470,7 +1531,7 @@
                   )}
                 </div>
 
-                {/* 2. IG Story 專屬：旅程消費佔比圓餅圖 + 全團大豪客排行榜 */}
+                {/* IG Story 專屬：旅程消費佔比圓餅圖 + 全團大豪客排行榜 */}
                 <div className="bg-gradient-to-br from-white via-[#F9FCFA] to-[#EFF6F2] p-4 rounded-[26px] shadow-sm border border-emerald-100/80 space-y-4">
                   <div className="flex justify-between items-center">
                     <div>
@@ -1488,14 +1549,12 @@
                     </button>
                   </div>
 
-                  {/* 圓餅圖 */}
                   {realExpenses.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-4">記低幾筆消費後，呢度會自動生成圓餅圖同大豪客排行榜！</p>
                   ) : (
                     <>
                       {renderDonutChart()}
 
-                      {/* 全團大豪客排行榜 */}
                       <div className="pt-3 border-t border-emerald-100/80 space-y-2">
                         <h4 className="text-xs font-extrabold text-slate-700 flex items-center gap-1">
                           <span>👑 全團個人消費排行榜 (按實際享用金額)</span>
@@ -1527,7 +1586,7 @@
                   )}
                 </div>
 
-                {/* 3. 個人墊支與應付淨額 */}
+                {/* 個人墊支與應付淨額 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white">
                   <h3 className="font-extrabold text-slate-800 text-sm mb-3">📊 個人墊支與應付結餘</h3>
                   <div className="space-y-2">
@@ -1596,7 +1655,7 @@
               </div>
             )}
 
-            {/* TAB 4: 多國匯率設定 (連一鍵還原網上即時匯率 Refresh 掣) */}
+            {/* TAB 4: 多國匯率設定 */}
             {activeTab === "rates" && (
               <div className="space-y-4">
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
