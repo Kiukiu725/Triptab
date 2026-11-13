@@ -236,7 +236,67 @@
         url.searchParams.set("room", roomId);
         window.history.replaceState({}, "", url);
 
-        const roomRef = db.ref(`rooms/${roomId}`);  const handleValue = (snapshot) => { const data = snapshot.val(); if (data) { setTripName(data.tripName \vert{}\vert{} "新旅程記帳 ✈️"); const loadedMembers = Array.isArray(data.members) && data.members.length > 0 ? data.members : DEFAULT_MEMBERS; setMembers(loadedMembers); setPayer(prev => loadedMembers.includes(prev) ? prev : loadedMembers[0]); setSplitWith(prev => { const valid = prev.filter(m => loadedMembers.includes(m)); return valid.length > 0 ? valid : loadedMembers; });  if (data.expenses) { const expList = Object.values(data.expenses).sort((a, b) => (b.id \vert{}\vert{} 0) - (a.id \vert{}\vert{} 0)); setExpenses(expList); } else { setExpenses([]); }  setCustomRates(data.customRates \vert{}\vert{} {}); } else { const initialRoomData = { tripName: "新旅程記帳 ✈️", members: DEFAULT_MEMBERS, expenses: {}, customRates: {}, createdAt: Date.now() }; roomRef.set(initialRoomData); } setSyncStatus("synced"); };  const handleError = (err) => { console.error("Firebase error:", err); setSyncStatus("error"); };  roomRef.on("value", handleValue, handleError); return () => roomRef.off("value", handleValue); }, [roomId]);  // 建立全新隨機 6 位數房間 + 自訂旅程名稱 const handleCreateNewRoom = (e) => { e.preventDefault(); const customTitle = newRoomCustomName.trim(); if (!customTitle) { alert("請先輸入新旅程名稱（例如：沖繩家族遊）！"); return; } const newCode = generateRoomCode(); const initialRoomData = { tripName: customTitle, members: DEFAULT_MEMBERS, expenses: {}, customRates: {}, createdAt: Date.now() }; db.ref(`rooms/${newCode}`).set(initialRoomData).then(() => {
+        const roomRef = db.ref(`rooms/${roomId}`);
+
+        const handleValue = (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+            setTripName(data.tripName || "新旅程記帳 ✈️");
+            const loadedMembers = Array.isArray(data.members) && data.members.length > 0 ? data.members : DEFAULT_MEMBERS;
+            setMembers(loadedMembers);
+            setPayer(prev => loadedMembers.includes(prev) ? prev : loadedMembers[0]);
+            setSplitWith(prev => {
+              const valid = prev.filter(m => loadedMembers.includes(m));
+              return valid.length > 0 ? valid : loadedMembers;
+            });
+
+            if (data.expenses) {
+              const expList = Object.values(data.expenses).sort((a, b) => (b.id || 0) - (a.id || 0));
+              setExpenses(expList);
+            } else {
+              setExpenses([]);
+            }
+
+            setCustomRates(data.customRates || {});
+          } else {
+            const initialRoomData = {
+              tripName: "新旅程記帳 ✈️",
+              members: DEFAULT_MEMBERS,
+              expenses: {},
+              customRates: {},
+              createdAt: Date.now()
+            };
+            roomRef.set(initialRoomData);
+          }
+          setSyncStatus("synced");
+        };
+
+        const handleError = (err) => {
+          console.error("Firebase error:", err);
+          setSyncStatus("error");
+        };
+
+        roomRef.on("value", handleValue, handleError);
+        return () => roomRef.off("value", handleValue);
+      }, [roomId]);
+
+      // 建立全新隨機 6 位數房間 + 自訂旅程名稱
+      const handleCreateNewRoom = (e) => {
+        e.preventDefault();
+        const customTitle = newRoomCustomName.trim();
+        if (!customTitle) {
+          alert("請先輸入新旅程名稱（例如：沖繩家族遊）！");
+          return;
+        }
+        const newCode = generateRoomCode();
+        const initialRoomData = {
+          tripName: customTitle,
+          members: DEFAULT_MEMBERS,
+          expenses: {},
+          customRates: {},
+          createdAt: Date.now()
+        };
+        db.ref(`rooms/${newCode}`).set(initialRoomData).then(() => {
           setRoomId(newCode);
           setNewRoomCustomName("");
           setActiveTab("expenses");
@@ -252,14 +312,63 @@
           alert("請輸入房間代碼！");
           return;
         }
-        db.ref(`rooms/${clean}`).once("value").then((snapshot) => { if (snapshot.exists()) { const data = snapshot.val(); setRoomId(clean); setRoomInput(""); setActiveTab("expenses"); alert(`✅ 成功進入房間：${data.tripName || clean}（房號：${clean}）`); } else { alert(`❌ 搵唔到房號「${clean}」，請檢查代碼有冇打錯！\n（如果想開新旅程，請用上面「✨ 開設新旅程房間」功能）`);
+        db.ref(`rooms/${clean}`).once("value").then((snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            setRoomId(clean);
+            setRoomInput("");
+            setActiveTab("expenses");
+            alert(`✅ 成功進入房間：${data.tripName || clean}（房號：${clean}）`);
+          } else {
+            alert(`❌ 搵唔到房號「${clean}」，請檢查代碼有冇打錯！\n（如果想開新旅程，請用上面「✨ 開設新旅程房間」功能）`);
           }
         });
       };
 
       // 更新雲端旅程名稱
       const handleTripNameBlur = () => {
-        db.ref(`rooms/${roomId}/tripName`).set(tripName); };  // 新增開支到雲端 const handleAddExpense = (e) => { e.preventDefault(); if (!title \vert{}\vert{} !amount \vert{}\vert{} splitWith.length === 0) return; const id = Date.now(); const newExp = { id, title, amount: parseFloat(amount), currency, payer, splitWith, category, date: new Date().toISOString().split("T")[0] }; db.ref(`rooms/${roomId}/expenses/${id}`).set(newExp); setTitle(""); setAmount(""); setShowAddForm(false); };  // 觸發刪除確認視窗 const requestDeleteExpense = (exp) => { setExpenseToDelete(exp); };  // 確認刪除雲端開支 const confirmDeleteExpense = () => { if (!expenseToDelete) return; db.ref(`rooms/${roomId}/expenses/${expenseToDelete.id}`).remove(); setExpenseToDelete(null); };  // 新增成員到雲端 const handleAddMember = () => { const name = newMemberName.trim(); if (!name \vert{}\vert{} members.includes(name)) return; const updated = [...members, name]; db.ref(`rooms/${roomId}/members`).set(updated);
+        db.ref(`rooms/${roomId}/tripName`).set(tripName);
+      };
+
+      // 新增開支到雲端
+      const handleAddExpense = (e) => {
+        e.preventDefault();
+        if (!title || !amount || splitWith.length === 0) return;
+        const id = Date.now();
+        const newExp = {
+          id,
+          title,
+          amount: parseFloat(amount),
+          currency,
+          payer,
+          splitWith,
+          category,
+          date: new Date().toISOString().split("T")[0]
+        };
+        db.ref(`rooms/${roomId}/expenses/${id}`).set(newExp);
+        setTitle("");
+        setAmount("");
+        setShowAddForm(false);
+      };
+
+      // 觸發刪除確認視窗
+      const requestDeleteExpense = (exp) => {
+        setExpenseToDelete(exp);
+      };
+
+      // 確認刪除雲端開支
+      const confirmDeleteExpense = () => {
+        if (!expenseToDelete) return;
+        db.ref(`rooms/${roomId}/expenses/${expenseToDelete.id}`).remove();
+        setExpenseToDelete(null);
+      };
+
+      // 新增成員到雲端
+      const handleAddMember = () => {
+        const name = newMemberName.trim();
+        if (!name || members.includes(name)) return;
+        const updated = [...members, name];
+        db.ref(`rooms/${roomId}/members`).set(updated);
         setSplitWith(updated);
         setNewMemberName("");
       };
@@ -267,7 +376,9 @@
       // 移除成員 (加入防誤刪確認)
       const handleRemoveMember = (name) => {
         if (members.length <= 2) return;
-        if (!window.confirm(`確定要從房間移除成員「${name}」嗎？`)) return; const updated = members.filter(x => x !== name); db.ref(`rooms/${roomId}/members`).set(updated);
+        if (!window.confirm(`確定要從房間移除成員「${name}」嗎？`)) return;
+        const updated = members.filter(x => x !== name);
+        db.ref(`rooms/${roomId}/members`).set(updated);
       };
 
       // 更新匯率並同步至房間
@@ -357,18 +468,105 @@
 
       // 1. 邀請朋友進入當前房間 (連房間代碼)
       const shareRoomLink = () => {
-        const shareUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(roomId)}`; const msg = `✈️ 一齊用 TripTab 記低「${tripName}」旅行夾錢開支！\n🔑 房間代碼：${roomId}\n👉 直接撳連結自動入房：\n${shareUrl}`;
+        const shareUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(roomId)}`;
+        const msg = `✈️ 一齊用 TripTab 記低「${tripName}」旅行夾錢開支！\n🔑 房間代碼：${roomId}\n👉 直接撳連結自動入房：\n${shareUrl}`;
         if (navigator.share) {
           navigator.share({
-            title: `TripTab - ${tripName}`, text: msg }).catch(() => {}); } else { navigator.clipboard.writeText(msg); alert(`已複製邀請連結！直接貼去 WhatsApp 群組，朋友一撳就會自動入房「${roomId}」📲`);
+            title: `TripTab - ${tripName}`,
+            text: msg
+          }).catch(() => {});
+        } else {
+          navigator.clipboard.writeText(msg);
+          alert(`已複製邀請連結！直接貼去 WhatsApp 群組，朋友一撳就會自動入房「${roomId}」📲`);
         }
       };
 
       // 2. 純 Share App (唔連房間 ID，朋友不會入咗你間房)
       const shareCleanApp = () => {
         const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-        const msg = `✈️ 推薦呢個超好用嘅旅行夾錢記帳 App「TripTab」！支援多國即時匯率同自動計數，撳呢條 Link 即可免費開自己嘅旅程房間：\n${cleanUrl}`; if (navigator.share) { navigator.share({ title: "TripTab - 旅行夾錢記帳 App", text: msg }).catch(() => {}); } else { navigator.clipboard.writeText(msg); alert(`已複製乾淨嘅 TripTab 推薦連結（唔包含你嘅房間資料）！可以放心 Share 畀其他朋友開新房用 📲`); } };  const copyToWhatsApp = () => { let text = `✈️ TripTab【${tripName}】結算清單 📊\n`;
-        text += `房號：${roomId} ｜ 總開支：HK$ ${Math.round(totalHKD).toLocaleString()}\n`; text += `------------------------\n`; text += `【過數指引 / FPS / PayMe】：\n`; if (settlement.transactions.length === 0) { text += `✅ 大家帳目已平衡，互不相欠！\n`; } else { settlement.transactions.forEach(t => { text += `👉 ${t.from} 需過數 HK$ ${t.amount.toLocaleString()} 畀 ${t.to}\n`; }); } text += `------------------------\n`; text += `大家 check 下有冇問題！🍻`; navigator.clipboard.writeText(text); alert("已複製 WhatsApp 結算清單！可以直接貼去群組！📲"); };  return ( <div className="max-w-md mx-auto min-h-screen bg-[#EFF6F2] flex flex-col shadow-2xl relative overflow-x-hidden pb-28 sm:my-4 sm:rounded-[42px] border border-white/60">  {/* 頂部大自然森林湖景插畫區 (參考圖一 Layout & 色調) */} <div className="relative pt-6 pb-20 px-6 overflow-hidden"> {/* SVG 森林山水晨光背景圖案 */} <svg className="absolute inset-0 w-full h-full object-cover pointer-events-none" viewBox="0 0 400 285" preserveAspectRatio="xMidYMid slice"> <defs> <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1"> <stop offset="0\%" stopColor="#E3F3EC" /> <stop offset="55\%" stopColor="#F5F9EB" /> <stop offset="100\%" stopColor="#D7EDD9" /> </linearGradient> <linearGradient id="lakeGrad" x1="0" y1="0" x2="1" y2="0"> <stop offset="0\%" stopColor="#B8E2D8" /> <stop offset="50\%" stopColor="#E2F4EB" /> <stop offset="100\%" stopColor="#9ACBBC" /> </linearGradient> </defs> <rect width="400" height="285" fill="url(#skyGrad)" /> {/* 柔和晨光太陽 */} <circle cx="255" cy="95" r="34" fill="#FFFDF2" opacity="0.95" /> <circle cx="255" cy="95" r="55" fill="#FFFDF2" opacity="0.35" /> {/* 遠山層次 */} <path d="M-20 190 Q85 115 210 175 T420 145 L420 285 L-20 285 Z" fill="#C2DEC8" opacity="0.7" /> <path d="M130 195 Q275 115 420 165 L420 285 L130 285 Z" fill="#9DC4A7" opacity="0.85" /> {/* 左側翠綠山坡 */} <path d="M-20 145 Q90 130 185 205 L-20 240 Z" fill="#78AA82" /> {/* 靜謐湖面與倒影 */} <path d="M70 205 L420 190 L420 265 L40 265 Z" fill="url(#lakeGrad)" /> <ellipse cx="250" cy="215" rx="55" ry="3" fill="#FFFFFF" opacity="0.65" /> <ellipse cx="235" cy="226" rx="35" ry="2" fill="#FFFFFF" opacity="0.5" /> {/* 前景草坡 */} <path d="M-20 195 Q115 190 220 260 L-20 285 Z" fill="#518763" /> <path d="M250 245 Q335 205 420 220 L420 285 L210 285 Z" fill="#467A57" /> {/* 左上角垂墜樹枝與葉片剪影 (呼應圖一左上樹葉) */} <path d="M0 78 Q55 68 115 98" stroke="#3E6E4C" strokeWidth="2" fill="none" opacity="0.65" /> <ellipse cx="32" cy="76" rx="11" ry="4.5" transform="rotate(-18 32 76)" fill="#588E67" opacity="0.8" /> <ellipse cx="64" cy="81" rx="12" ry="4.5" transform="rotate(12 64 81)" fill="#437652" opacity="0.8" /> <ellipse cx="95" cy="91" rx="10" ry="4" transform="rotate(25 95 91)" fill="#6FA47C" opacity="0.85" /> <ellipse cx="48" cy="89" rx="9" ry="3.5" transform="rotate(-28 48 89)" fill="#6FA47C" opacity="0.75" /> </svg>  {/* 頂部 Header (對應圖一 "After" 標題與右上角日期膠囊) */} <div className="relative z-10 flex justify-between items-start gap-2"> <div className="flex items-center gap-3"> <TripTabLogo className="w-12 h-12" /> <div> <div className="flex items-center gap-1.5"> <span className="text-[11px] font-extrabold tracking-widest uppercase text-[#3D6B52]"> TRIPTAB </span> <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-500' : syncStatus === 'connecting' ? 'bg-amber-400 animate-ping' : 'bg-rose-500'}`} title="雲端同步狀態"></span>
+        const msg = `✈️ 推薦呢個超好用嘅旅行夾錢記帳 App「TripTab」！支援多國即時匯率同自動計數，撳呢條 Link 即可免費開自己嘅旅程房間：\n${cleanUrl}`;
+        if (navigator.share) {
+          navigator.share({
+            title: "TripTab - 旅行夾錢記帳 App",
+            text: msg
+          }).catch(() => {});
+        } else {
+          navigator.clipboard.writeText(msg);
+          alert(`已複製乾淨嘅 TripTab 推薦連結（唔包含你嘅房間資料）！可以放心 Share 畀其他朋友開新房用 📲`);
+        }
+      };
+
+      const copyToWhatsApp = () => {
+        let text = `✈️ TripTab【${tripName}】結算清單 📊\n`;
+        text += `房號：${roomId} ｜ 總開支：HK$ ${Math.round(totalHKD).toLocaleString()}\n`;
+        text += `------------------------\n`;
+        text += `【過數指引 / FPS / PayMe】：\n`;
+        if (settlement.transactions.length === 0) {
+          text += `✅ 大家帳目已平衡，互不相欠！\n`;
+        } else {
+          settlement.transactions.forEach(t => {
+            text += `👉 ${t.from} 需過數 HK$ ${t.amount.toLocaleString()} 畀 ${t.to}\n`;
+          });
+        }
+        text += `------------------------\n`;
+        text += `大家 check 下有冇問題！🍻`;
+        navigator.clipboard.writeText(text);
+        alert("已複製 WhatsApp 結算清單！可以直接貼去群組！📲");
+      };
+
+      return (
+        <div className="max-w-md mx-auto min-h-screen bg-[#EFF6F2] flex flex-col shadow-2xl relative overflow-x-hidden pb-28 sm:my-4 sm:rounded-[42px] border border-white/60">
+          
+          {/* 頂部大自然森林湖景插畫區 (參考圖一 Layout & 色調) */}
+          <div className="relative pt-6 pb-20 px-6 overflow-hidden">
+            {/* SVG 森林山水晨光背景圖案 */}
+            <svg className="absolute inset-0 w-full h-full object-cover pointer-events-none" viewBox="0 0 400 285" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#E3F3EC" />
+                  <stop offset="55%" stopColor="#F5F9EB" />
+                  <stop offset="100%" stopColor="#D7EDD9" />
+                </linearGradient>
+                <linearGradient id="lakeGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#B8E2D8" />
+                  <stop offset="50%" stopColor="#E2F4EB" />
+                  <stop offset="100%" stopColor="#9ACBBC" />
+                </linearGradient>
+              </defs>
+              <rect width="400" height="285" fill="url(#skyGrad)" />
+              {/* 柔和晨光太陽 */}
+              <circle cx="255" cy="95" r="34" fill="#FFFDF2" opacity="0.95" />
+              <circle cx="255" cy="95" r="55" fill="#FFFDF2" opacity="0.35" />
+              {/* 遠山層次 */}
+              <path d="M-20 190 Q85 115 210 175 T420 145 L420 285 L-20 285 Z" fill="#C2DEC8" opacity="0.7" />
+              <path d="M130 195 Q275 115 420 165 L420 285 L130 285 Z" fill="#9DC4A7" opacity="0.85" />
+              {/* 左側翠綠山坡 */}
+              <path d="M-20 145 Q90 130 185 205 L-20 240 Z" fill="#78AA82" />
+              {/* 靜謐湖面與倒影 */}
+              <path d="M70 205 L420 190 L420 265 L40 265 Z" fill="url(#lakeGrad)" />
+              <ellipse cx="250" cy="215" rx="55" ry="3" fill="#FFFFFF" opacity="0.65" />
+              <ellipse cx="235" cy="226" rx="35" ry="2" fill="#FFFFFF" opacity="0.5" />
+              {/* 前景草坡 */}
+              <path d="M-20 195 Q115 190 220 260 L-20 285 Z" fill="#518763" />
+              <path d="M250 245 Q335 205 420 220 L420 285 L210 285 Z" fill="#467A57" />
+              {/* 左上角垂墜樹枝與葉片剪影 (呼應圖一左上樹葉) */}
+              <path d="M0 78 Q55 68 115 98" stroke="#3E6E4C" strokeWidth="2" fill="none" opacity="0.65" />
+              <ellipse cx="32" cy="76" rx="11" ry="4.5" transform="rotate(-18 32 76)" fill="#588E67" opacity="0.8" />
+              <ellipse cx="64" cy="81" rx="12" ry="4.5" transform="rotate(12 64 81)" fill="#437652" opacity="0.8" />
+              <ellipse cx="95" cy="91" rx="10" ry="4" transform="rotate(25 95 91)" fill="#6FA47C" opacity="0.85" />
+              <ellipse cx="48" cy="89" rx="9" ry="3.5" transform="rotate(-28 48 89)" fill="#6FA47C" opacity="0.75" />
+            </svg>
+
+            {/* 頂部 Header (對應圖一 "After" 標題與右上角日期膠囊) */}
+            <div className="relative z-10 flex justify-between items-start gap-2">
+              <div className="flex items-center gap-3">
+                <TripTabLogo className="w-12 h-12" />
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-extrabold tracking-widest uppercase text-[#3D6B52]">
+                      TRIPTAB
+                    </span>
+                    <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-500' : syncStatus === 'connecting' ? 'bg-amber-400 animate-ping' : 'bg-rose-500'}`} title="雲端同步狀態"></span>
                   </div>
                   <h1 className="text-2xl font-black text-slate-800 tracking-tight leading-tight">
                     {tripName}
@@ -619,7 +817,142 @@
                       return (
                         <div key={m} className="flex justify-between items-center text-xs py-2 px-3 bg-slate-50/70 rounded-xl">
                           <span className="font-bold text-slate-700">{m}</span>
-                          <span className={`font-extrabold ${net === 0 ? 'text-slate-400' : isPositive ? 'text-[#4E8C6F]' : 'text-rose-500'}`}> {net === 0 ? '收支平衡' : isPositive ? `應收回 HK$ ${net.toLocaleString()}` : `應支付 HK$ ${Math.abs(net).toLocaleString()}`} </span> </div> ); })} </div> </div> </div> )}  {/* TAB 3: 房間與成員管理 */} {activeTab === "rooms" && ( <div className="space-y-4"> {/* 1. 開設全新隨機代碼房間 */} <div className="bg-white p-4 rounded-[24px] shadow-sm border border-emerald-100 space-y-3"> <div className="flex justify-between items-center"> <h3 className="font-extrabold text-slate-800 text-sm">✨ 開設新旅程房間</h3> <span className="text-[11px] bg-[#EFF6F2] text-[#3B6E52] px-2.5 py-0.5 rounded-full font-bold">自動配發 6 位防撞代碼</span> </div> <form onSubmit={handleCreateNewRoom} className="flex gap-2"> <input type="text" placeholder="輸入新旅程名稱 (例: 沖繩家族遊)" value={newRoomCustomName} onChange={e => setNewRoomCustomName(e.target.value)} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" /> <button type="submit" className="bg-[#4E8C6F] text-white text-xs font-bold px-4 rounded-xl shadow-sm hover:bg-[#3F765C] whitespace-nowrap">建立新房</button> </form> </div>  {/* 2. 輸入 6 位代碼加入現有房間 */} <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3"> <div className="flex justify-between items-center"> <h3 className="font-extrabold text-slate-800 text-sm">🚪 輸入代碼加入現有房間</h3> <span className="text-xs text-[#4E8C6F] font-mono font-bold">當前: #{roomId}</span> </div> <form onSubmit={handleSwitchRoom} className="flex gap-2"> <input type="text" placeholder="輸入 6 位房間代碼 (例: X7K9P2)" value={roomInput} onChange={e => setRoomInput(e.target.value.toUpperCase())} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" /> <button type="submit" className="bg-slate-800 text-white text-xs font-bold px-4 rounded-xl shadow-sm hover:bg-slate-700 whitespace-nowrap">進入房間</button> </form> </div>  {/* 3. 修改當前旅程名稱 */} <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-2"> <h3 className="font-extrabold text-slate-800 text-sm">✏️ 當前旅程名稱 (改完自動同步)</h3> <input type="text" value={tripName} onChange={e => setTripName(e.target.value)} onBlur={handleTripNameBlur} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" /> </div>  {/* 4. 房間成員管理 */} <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3"> <h3 className="font-extrabold text-slate-800 text-sm">👥 同行成員名單 ({members.length}人)</h3> <div className="flex gap-2"> <input type="text" placeholder="新增成員名字" value={newMemberName} onChange={e => setNewMemberName(e.target.value)} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2" /> <button onClick={handleAddMember} className="bg-[#4E8C6F] text-white text-xs font-bold px-4 rounded-xl">新增</button> </div> <div className="flex flex-wrap gap-2 pt-1"> {members.map(m => ( <span key={m} className="bg-[#EFF6F2] text-[#3B6E52] text-xs px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5"> {m} {members.length > 2 && <button onClick={() => handleRemoveMember(m)} className="text-slate-400 hover:text-rose-500 font-bold">×</button>} </span> ))} </div> </div> </div> )}  {/* TAB 4: 多國匯率設定 */} {activeTab === "rates" && ( <div className="space-y-4"> <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3"> <div className="flex justify-between items-center"> <h3 className="font-extrabold text-slate-800 text-sm">🌍 匯率設定 (兌 HKD)</h3> <span className="text-xs text-slate-400">1 外幣 = ? 港幣</span> </div> <form onSubmit={handleAddCustomCurrency} className="flex gap-2 bg-[#F5F9F6] p-2 rounded-2xl border border-emerald-100"> <input type="text" maxLength="3" placeholder="代號 (如 NZD)" value={newCurCode} onChange={e => setNewCurCode(e.target.value.toUpperCase())} className="w-24 text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 font-mono uppercase" /> <input type="number" step="any" placeholder="兌港幣匯率" value={newCurRate} onChange={e => setNewCurRate(e.target.value)} className="flex-1 text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2" /> <button type="submit" className="bg-[#4E8C6F] text-white text-xs font-bold px-3.5 rounded-xl">＋貨幣</button> </form> <div className="grid grid-cols-2 gap-2 text-xs"> {Object.keys(rates).map(cur => ( <div key={cur} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl border border-slate-100"> <span className="font-extrabold text-slate-700">{cur}</span> <input type="number" step="0.0001" value={rates[cur]} onChange={e => handleRateChange(cur, e.target.value)} className="w-20 text-right bg-white border border-slate-200 rounded-lg px-1.5 py-1 font-mono font-semibold text-[#3B6E52]" /> </div> ))} </div> </div> </div> )}  </div>  {/* 刪除開支確認彈窗 (防誤觸 Modal) */} {expenseToDelete && ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 backdrop-blur-xs px-6"> <div className="bg-white rounded-[28px] p-5 w-full max-w-xs shadow-2xl border border-emerald-50 text-center space-y-4"> <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center mx-auto"> <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"> <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /> </svg> </div> <div className="space-y-1"> <h3 className="text-base font-extrabold text-slate-800">確定要刪除呢筆開支？</h3> <p className="text-xs text-slate-500">刪除後所有同行成員嘅畫面都會同步移除，無法復原。</p> </div> <div className="bg-[#F5F9F6] p-3 rounded-2xl border border-emerald-100/80 text-left"> <p className="text-xs font-bold text-slate-800 truncate">{expenseToDelete.title}</p> <p className="text-sm font-black text-[#3B6E52] mt-0.5"> {expenseToDelete.currency} {Number(expenseToDelete.amount).toLocaleString()} <span className="text-[11px] font-medium text-slate-400 ml-1.5">({expenseToDelete.payer} 墊支)</span> </p> </div> <div className="grid grid-cols-2 gap-2.5 pt-1"> <button type="button" onClick={() => setExpenseToDelete(null)} className="py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition" > 取消 </button> <button type="button" onClick={confirmDeleteExpense} className="py-2.5 rounded-xl text-xs font-bold bg-rose-500 text-white hover:bg-rose-600 shadow-sm transition" > 確定刪除 </button> </div> </div> </div> )}  {/* 底部圓角導覽列 (完全仿照圖一底部 4 個 Icon + 綠色小圓點指示器) */} <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-slate-100 px-6 py-2.5 flex justify-around items-center z-30 sm:rounded-b-[42px] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]">  {/* 1. 首頁開支明細 (Home Icon) */} <button onClick={() => setActiveTab("expenses")} className="flex flex-col items-center py-1 px-3 relative group"> <svg className={`w-6 h-6 transition ${activeTab === 'expenses' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill={activeTab === 'expenses' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <span className={`font-extrabold ${net === 0 ? 'text-slate-400' : isPositive ? 'text-[#4E8C6F]' : 'text-rose-500'}`}>
+                            {net === 0 ? '收支平衡' : isPositive ? `應收回 HK$ ${net.toLocaleString()}` : `應支付 HK$ ${Math.abs(net).toLocaleString()}`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: 房間與成員管理 */}
+            {activeTab === "rooms" && (
+              <div className="space-y-4">
+                {/* 1. 開設全新隨機代碼房間 */}
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-emerald-100 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-extrabold text-slate-800 text-sm">✨ 開設新旅程房間</h3>
+                    <span className="text-[11px] bg-[#EFF6F2] text-[#3B6E52] px-2.5 py-0.5 rounded-full font-bold">自動配發 6 位防撞代碼</span>
+                  </div>
+                  <form onSubmit={handleCreateNewRoom} className="flex gap-2">
+                    <input type="text" placeholder="輸入新旅程名稱 (例: 沖繩家族遊)" value={newRoomCustomName} onChange={e => setNewRoomCustomName(e.target.value)} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
+                    <button type="submit" className="bg-[#4E8C6F] text-white text-xs font-bold px-4 rounded-xl shadow-sm hover:bg-[#3F765C] whitespace-nowrap">建立新房</button>
+                  </form>
+                </div>
+
+                {/* 2. 輸入 6 位代碼加入現有房間 */}
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-extrabold text-slate-800 text-sm">🚪 輸入代碼加入現有房間</h3>
+                    <span className="text-xs text-[#4E8C6F] font-mono font-bold">當前: #{roomId}</span>
+                  </div>
+                  <form onSubmit={handleSwitchRoom} className="flex gap-2">
+                    <input type="text" placeholder="輸入 6 位房間代碼 (例: X7K9P2)" value={roomInput} onChange={e => setRoomInput(e.target.value.toUpperCase())} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
+                    <button type="submit" className="bg-slate-800 text-white text-xs font-bold px-4 rounded-xl shadow-sm hover:bg-slate-700 whitespace-nowrap">進入房間</button>
+                  </form>
+                </div>
+
+                {/* 3. 修改當前旅程名稱 */}
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-2">
+                  <h3 className="font-extrabold text-slate-800 text-sm">✏️ 當前旅程名稱 (改完自動同步)</h3>
+                  <input type="text" value={tripName} onChange={e => setTripName(e.target.value)} onBlur={handleTripNameBlur} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
+                </div>
+
+                {/* 4. 房間成員管理 */}
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
+                  <h3 className="font-extrabold text-slate-800 text-sm">👥 同行成員名單 ({members.length}人)</h3>
+                  <div className="flex gap-2">
+                    <input type="text" placeholder="新增成員名字" value={newMemberName} onChange={e => setNewMemberName(e.target.value)} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2" />
+                    <button onClick={handleAddMember} className="bg-[#4E8C6F] text-white text-xs font-bold px-4 rounded-xl">新增</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {members.map(m => (
+                      <span key={m} className="bg-[#EFF6F2] text-[#3B6E52] text-xs px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5">
+                        {m}
+                        {members.length > 2 && <button onClick={() => handleRemoveMember(m)} className="text-slate-400 hover:text-rose-500 font-bold">×</button>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: 多國匯率設定 */}
+            {activeTab === "rates" && (
+              <div className="space-y-4">
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-extrabold text-slate-800 text-sm">🌍 匯率設定 (兌 HKD)</h3>
+                    <span className="text-xs text-slate-400">1 外幣 = ? 港幣</span>
+                  </div>
+                  <form onSubmit={handleAddCustomCurrency} className="flex gap-2 bg-[#F5F9F6] p-2 rounded-2xl border border-emerald-100">
+                    <input type="text" maxLength="3" placeholder="代號 (如 NZD)" value={newCurCode} onChange={e => setNewCurCode(e.target.value.toUpperCase())} className="w-24 text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 font-mono uppercase" />
+                    <input type="number" step="any" placeholder="兌港幣匯率" value={newCurRate} onChange={e => setNewCurRate(e.target.value)} className="flex-1 text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2" />
+                    <button type="submit" className="bg-[#4E8C6F] text-white text-xs font-bold px-3.5 rounded-xl">＋貨幣</button>
+                  </form>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {Object.keys(rates).map(cur => (
+                      <div key={cur} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                        <span className="font-extrabold text-slate-700">{cur}</span>
+                        <input type="number" step="0.0001" value={rates[cur]} onChange={e => handleRateChange(cur, e.target.value)} className="w-20 text-right bg-white border border-slate-200 rounded-lg px-1.5 py-1 font-mono font-semibold text-[#3B6E52]" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
+
+          {/* 刪除開支確認彈窗 (防誤觸 Modal) */}
+          {expenseToDelete && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 backdrop-blur-xs px-6">
+              <div className="bg-white rounded-[28px] p-5 w-full max-w-xs shadow-2xl border border-emerald-50 text-center space-y-4">
+                <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center mx-auto">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-extrabold text-slate-800">確定要刪除呢筆開支？</h3>
+                  <p className="text-xs text-slate-500">刪除後所有同行成員嘅畫面都會同步移除，無法復原。</p>
+                </div>
+                <div className="bg-[#F5F9F6] p-3 rounded-2xl border border-emerald-100/80 text-left">
+                  <p className="text-xs font-bold text-slate-800 truncate">{expenseToDelete.title}</p>
+                  <p className="text-sm font-black text-[#3B6E52] mt-0.5">
+                    {expenseToDelete.currency} {Number(expenseToDelete.amount).toLocaleString()}
+                    <span className="text-[11px] font-medium text-slate-400 ml-1.5">({expenseToDelete.payer} 墊支)</span>
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setExpenseToDelete(null)}
+                    className="py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDeleteExpense}
+                    className="py-2.5 rounded-xl text-xs font-bold bg-rose-500 text-white hover:bg-rose-600 shadow-sm transition"
+                  >
+                    確定刪除
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 底部圓角導覽列 (完全仿照圖一底部 4 個 Icon + 綠色小圓點指示器) */}
+          <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-slate-100 px-6 py-2.5 flex justify-around items-center z-30 sm:rounded-b-[42px] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]">
+            
+            {/* 1. 首頁開支明細 (Home Icon) */}
+            <button onClick={() => setActiveTab("expenses")} className="flex flex-col items-center py-1 px-3 relative group">
+              <svg className={`w-6 h-6 transition ${activeTab === 'expenses' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill={activeTab === 'expenses' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1v-9.5z" />
               </svg>
               <span className={`text-[10px] font-bold mt-0.5 ${activeTab === 'expenses' ? 'text-[#3D7A5A]' : 'text-slate-400'}`}>記帳</span>
@@ -628,4 +961,41 @@
 
             {/* 2. 結算標靶 (Target Icon) */}
             <button onClick={() => setActiveTab("settle")} className="flex flex-col items-center py-1 px-3 relative group">
-              <svg className={`w-6 h
+              <svg className={`w-6 h-6 transition ${activeTab === 'settle' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="5" />
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+              </svg>
+              <span className={`text-[10px] font-bold mt-0.5 ${activeTab === 'settle' ? 'text-[#3D7A5A]' : 'text-slate-400'}`}>結算</span>
+              {activeTab === "settle" && <span className="w-1.5 h-1.5 rounded-full bg-[#3D7A5A] mt-0.5"></span>}
+            </button>
+
+            {/* 3. 房間與成員切換 (Circle Portal Icon) */}
+            <button onClick={() => setActiveTab("rooms")} className="flex flex-col items-center py-1 px-3 relative group">
+              <svg className={`w-6 h-6 transition ${activeTab === 'rooms' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="8.5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v8M8 12h8" />
+              </svg>
+              <span className={`text-[10px] font-bold mt-0.5 ${activeTab === 'rooms' ? 'text-[#3D7A5A]' : 'text-slate-400'}`}>房間</span>
+              {activeTab === "rooms" && <span className="w-1.5 h-1.5 rounded-full bg-[#3D7A5A] mt-0.5"></span>}
+            </button>
+
+            {/* 4. 匯率統計設定 (Bar Chart Icon) */}
+            <button onClick={() => setActiveTab("rates")} className="flex flex-col items-center py-1 px-3 relative group">
+              <svg className={`w-6 h-6 transition ${activeTab === 'rates' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 20v-5M12 20v-9M18 20V6" />
+              </svg>
+              <span className={`text-[10px] font-bold mt-0.5 ${activeTab === 'rates' ? 'text-[#3D7A5A]' : 'text-slate-400'}`}>匯率</span>
+              {activeTab === "rates" && <span className="w-1.5 h-1.5 rounded-full bg-[#3D7A5A] mt-0.5"></span>}
+            </button>
+
+          </div>
+
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
