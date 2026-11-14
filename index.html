@@ -199,6 +199,8 @@
       const [customRates, setCustomRates] = useState({});
       const [defaultCurrency, setDefaultCurrency] = useState("JPY");
       const [settledMarks, setSettledMarks] = useState({});
+      // 新增：海外信用卡手續費 (%) 設定（預設香港常見 1.95%）
+      const [cardFeePct, setCardFeePct] = useState(1.95);
 
       // UI 狀態
       const [activeTab, setActiveTab] = useState("expenses");
@@ -231,6 +233,7 @@
       const [expDate, setExpDate] = useState(() => new Date().toISOString().split("T")[0]);
       const [splitMode, setSplitMode] = useState("equal");
       const [customSplitsInput, setCustomSplitsInput] = useState({});
+      const [includeCardFee, setIncludeCardFee] = useState(false); // 新增開支時是否計入信用卡手續費
 
       // 公數錢包注資表單狀態
       const [poolPerPersonAmt, setPoolPerPersonAmt] = useState("10000");
@@ -364,6 +367,7 @@
             if (Array.isArray(cached.expenses)) setExpenses(cached.expenses);
             if (cached.customRates) setCustomRates(cached.customRates);
             if (cached.settledMarks) setSettledMarks(cached.settledMarks);
+            if (cached.cardFeePct !== undefined) setCardFeePct(Number(cached.cardFeePct));
             if (cached.defaultCurrency) {
               setDefaultCurrency(cached.defaultCurrency);
               setCurrency(cached.defaultCurrency);
@@ -388,6 +392,7 @@
             const cRates = data.customRates || {};
             const defCur = data.defaultCurrency || "JPY";
             const sMarks = data.settledMarks || {};
+            const cFee = data.cardFeePct !== undefined ? Number(data.cardFeePct) : 1.95;
 
             setTripName(tName);
             upsertSavedRoom(roomId, tName);
@@ -406,6 +411,7 @@
             setCurrency(defCur);
             setPoolCurrency(defCur);
             setSettledMarks(sMarks);
+            setCardFeePct(cFee);
 
             localStorage.setItem(`triptab_cache_${roomId}`, JSON.stringify({
               tripName: tName,
@@ -414,7 +420,8 @@
               expenses: expList,
               customRates: cRates,
               defaultCurrency: defCur,
-              settledMarks: sMarks
+              settledMarks: sMarks,
+              cardFeePct: cFee
             }));
           } else {
             const initialRoomData = {
@@ -425,6 +432,7 @@
               customRates: {},
               settledMarks: {},
               defaultCurrency: "JPY",
+              cardFeePct: 1.95,
               createdAt: Date.now()
             };
             roomRef.set(initialRoomData);
@@ -449,22 +457,49 @@
         db.ref(`rooms/${roomId}/defaultCurrency`).set(cur);
       };
 
-      // 按右邊 ✓ 號標記已付，文字會自動消除（同步上雲端）
+      // 更新海外信用卡手續費 (%) 設定並同步至雲端
+      const handleCardFeeChange = (val) => {
+        const num = parseFloat(val);
+        const cleanFee = isNaN(num) || num < 0 ? 0 : num;
+        setCardFeePct(val);
+        if (!isNaN(num) && num >= 0) {
+          db.ref(`rooms/${roomId}/cardFeePct`).set(cleanFee);
+        }
+      };
+
+      // 按右邊 ✓ 號標記已付，文字會自動消除
       const markTransactionAsPaid = (from, to) => {
         const key = `${from}__TO__${to}`.replace(/[.#$\[\]\/]/g, "_");
         setSettledMarks(prev => ({ ...prev, [key]: true }));
         db.ref(`rooms/${roomId}/settledMarks/${key}`).set(true);
       };
 
-      // 重設已付記錄（方便用戶萬一撳錯想還原）
       const resetAllSettledMarks = () => {
         setSettledMarks({});
         db.ref(`rooms/${roomId}/settledMarks`).remove();
       };
 
-      const toHKD = (amt, curr) => {
+      // 折算港幣函數（支援計入海外信用卡手續費 %）
+      const toHKD = (amt, curr, feePct = 0) => {
         const r = rates[curr] || 1;
-        return amt * r;
+        const baseHKD = (Number(amt) || 0) * r;
+        if (curr !== "HKD" && feePct > 0) {
+          return baseHKD * (1 + Number(feePct) / 100);
+        }
+        return baseHKD;
+      };
+
+      // 取得單筆帳目實際適用嘅信用卡手續費 %
+      const getExpFeePct = (exp) => {
+        if (!exp || exp.type === "pool_topup" || exp.currency === "HKD" || exp.payer === POOL_PAYER_KEY) return 0;
+        if (exp.hasCardFee) {
+          return exp.cardFeePct !== undefined ? Number(exp.cardFeePct) : (Number(cardFeePct) || 0);
+        }
+        return 0;
+      };
+
+      const getExpHKD = (exp) => {
+        return toHKD(exp.amount, exp.currency, getExpFeePct(exp));
       };
 
       const poolSummary = useMemo(() => {
@@ -479,12 +514,12 @@
             if (!byCurrency[cur]) byCurrency[cur] = { topup: 0, spent: 0, balance: 0 };
             byCurrency[cur].topup += amt;
             byCurrency[cur].balance += amt;
-            totalTopUpHKD += toHKD(amt, cur);
+            totalTopUpHKD += toHKD(amt, cur, 0);
           } else if (exp.payer === POOL_PAYER_KEY) {
             if (!byCurrency[cur]) byCurrency[cur] = { topup: 0, spent: 0, balance: 0 };
             byCurrency[cur].spent += amt;
             byCurrency[cur].balance -= amt;
-            totalSpentFromPoolHKD += toHKD(amt, cur);
+            totalSpentFromPoolHKD += toHKD(amt, cur, 0);
           }
         });
 
@@ -566,6 +601,7 @@
           customRates: {},
           settledMarks: {},
           defaultCurrency: defaultCurrency || "JPY",
+          cardFeePct: Number(cardFeePct) || 1.95,
           createdAt: Date.now()
         };
         db.ref(`rooms/${newCode}`).set(initialRoomData).then(() => {
@@ -659,6 +695,7 @@
           });
         }
 
+        const useFee = currency !== "HKD" && payer !== POOL_PAYER_KEY && includeCardFee && Number(cardFeePct) > 0;
         const id = Date.now();
         const newExp = {
           id,
@@ -671,6 +708,8 @@
           splitMode,
           customSplits: savedCustomSplits,
           category,
+          hasCardFee: useFee,
+          cardFeePct: useFee ? Number(cardFeePct) : 0,
           date: expDate || new Date().toISOString().split("T")[0]
         };
 
@@ -681,6 +720,7 @@
         setAmount("");
         setSplitMode("equal");
         setCustomSplitsInput({});
+        setIncludeCardFee(false);
         setShowAddForm(false);
       };
 
@@ -719,6 +759,8 @@
           contributors: Array.isArray(exp.contributors) ? exp.contributors.filter(m => members.includes(m)) : [...members],
           splitMode: exp.splitMode || "equal",
           customSplitsInput: exp.customSplits ? { ...exp.customSplits } : {},
+          hasCardFee: !!exp.hasCardFee,
+          cardFeePct: exp.cardFeePct !== undefined ? Number(exp.cardFeePct) : (Number(cardFeePct) || 0),
           date: exp.date || new Date().toISOString().split("T")[0]
         });
       };
@@ -816,6 +858,9 @@
           });
         }
 
+        const useFee = editingExpense.currency !== "HKD" && editingExpense.payer !== POOL_PAYER_KEY && editingExpense.hasCardFee;
+        const appliedFee = useFee ? (editingExpense.cardFeePct || Number(cardFeePct) || 0) : 0;
+
         const updatedExp = {
           id: editingExpense.id,
           type: "expense",
@@ -827,6 +872,8 @@
           splitMode: editingExpense.splitMode,
           customSplits: savedCustomSplits,
           category: editingExpense.category,
+          hasCardFee: useFee && appliedFee > 0,
+          cardFeePct: appliedFee,
           date: editingExpense.date
         };
 
@@ -1014,8 +1061,8 @@
       }, [expenses]);
 
       const totalHKD = useMemo(() => {
-        return realExpenses.reduce((acc, exp) => acc + toHKD(Number(exp.amount), exp.currency), 0);
-      }, [realExpenses, rates]);
+        return realExpenses.reduce((acc, exp) => acc + getExpHKD(exp), 0);
+      }, [realExpenses, rates, cardFeePct]);
 
       const groupedDays = useMemo(() => {
         if (expenses.length === 0) return [];
@@ -1039,14 +1086,14 @@
           }
           groupsMap[dStr].items.push(exp);
           if (exp.type !== "pool_topup") {
-            groupsMap[dStr].dayTotalHKD += toHKD(Number(exp.amount), exp.currency);
+            groupsMap[dStr].dayTotalHKD += getExpHKD(exp);
           }
         });
 
         return Object.values(groupsMap).sort((a, b) => b.date.localeCompare(a.date));
-      }, [expenses, rates]);
+      }, [expenses, rates, cardFeePct]);
 
-      // 結算演算法 (打 Tick 嘅項目會自動消除並同步調整剩餘結餘)
+      // 結算演算法 (自動計入海外信用卡手續費 + 打 Tick 消除項目)
       const settlement = useMemo(() => {
         const balances = {};
         const removedPayerNegativeBalances = {};
@@ -1058,7 +1105,8 @@
         });
 
         expenses.forEach(exp => {
-          const hkdAmount = toHKD(Number(exp.amount), exp.currency);
+          const feePct = getExpFeePct(exp);
+          const hkdAmount = toHKD(Number(exp.amount), exp.currency, feePct);
 
           if (exp.type === "pool_topup") {
             const activeContribs = (exp.contributors || exp.splitWith || []).filter(p => members.includes(p));
@@ -1085,7 +1133,7 @@
           }
 
           validSplits.forEach(p => {
-            const shareHKD = toHKD(rawShares[p] || 0, exp.currency);
+            const shareHKD = toHKD(rawShares[p] || 0, exp.currency, feePct);
             balances[p] -= shareHKD;
             personalConsumption[p] = (personalConsumption[p] || 0) + shareHKD;
           });
@@ -1150,13 +1198,13 @@
           paidCount,
           spenderLeaderboard
         };
-      }, [expenses, members, rates, settledMarks]);
+      }, [expenses, members, rates, settledMarks, cardFeePct]);
 
       const categoryChartData = useMemo(() => {
         const map = {};
         realExpenses.forEach(exp => {
           const cat = exp.category || "雜項";
-          const hkd = toHKD(Number(exp.amount), exp.currency);
+          const hkd = getExpHKD(exp);
           map[cat] = (map[cat] || 0) + hkd;
         });
         const list = Object.keys(map)
@@ -1168,7 +1216,7 @@
           }))
           .sort((a, b) => b.hkd - a.hkd);
         return list;
-      }, [realExpenses, totalHKD, rates, categories]);
+      }, [realExpenses, totalHKD, rates, categories, cardFeePct]);
 
       const exportToExcelCSV = () => {
         if (expenses.length === 0) {
@@ -1183,6 +1231,7 @@
           "原幣",
           "原幣金額",
           "當日匯率(兌HKD)",
+          "信用卡手續費(%)",
           "折合港幣(HKD)",
           "墊支/付款方式",
           "分帳模式",
@@ -1203,7 +1252,8 @@
           .map(exp => {
             const cur = exp.currency || "HKD";
             const rate = rates[cur] || 1;
-            const hkdTotal = Math.round(toHKD(Number(exp.amount), cur));
+            const feePct = getExpFeePct(exp);
+            const hkdTotal = Math.round(toHKD(Number(exp.amount), cur, feePct));
             const payerLabel = exp.type === "pool_topup"
               ? "公數注資"
               : exp.payer === POOL_PAYER_KEY
@@ -1225,7 +1275,7 @@
                   : 0;
               }
               const s = shares[m] || 0;
-              return Math.round(toHKD(s, cur));
+              return Math.round(toHKD(s, cur, feePct));
             });
 
             return [
@@ -1236,6 +1286,7 @@
               cur,
               exp.amount || 0,
               rate,
+              feePct > 0 ? `${feePct}%` : "0%",
               hkdTotal,
               payerLabel,
               modeLabel,
@@ -1565,30 +1616,53 @@
                       required
                     />
 
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          step="any"
-                          placeholder="輸入金額"
-                          value={amount}
-                          onChange={e => setAmount(e.target.value)}
-                          className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]"
-                          required
-                        />
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            step="any"
+                            placeholder="輸入金額"
+                            value={amount}
+                            onChange={e => setAmount(e.target.value)}
+                            className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]"
+                            required
+                          />
+                        </div>
+                        <select
+                          value={currency}
+                          onChange={e => setCurrency(e.target.value)}
+                          className="bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-2 text-sm font-extrabold text-[#3B6E52] focus:outline-none"
+                        >
+                          {sortedCurrencies.map(c => (
+                            <option key={c} value={c}>
+                              {c === defaultCurrency ? `${c} ⭐` : c}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                      <select
-                        value={currency}
-                        onChange={e => setCurrency(e.target.value)}
-                        className="bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-2 text-sm font-extrabold text-[#3B6E52] focus:outline-none"
-                      >
-                        {sortedCurrencies.map(c => (
-                          <option key={c} value={c}>
-                            {c === defaultCurrency ? `${c} ⭐` : c}
-                          </option>
-                        ))}
-                      </select>
+
+                      {/* 💳 海外信用卡手續費開關掣（當外幣記帳且非公數支付時顯示） */}
+                      {currency !== "HKD" && payer !== POOL_PAYER_KEY && Number(cardFeePct) > 0 && (
+                        <div className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/80">
+                          <button
+                            type="button"
+                            onClick={() => setIncludeCardFee(!includeCardFee)}
+                            className="flex items-center gap-2 text-xs font-bold text-slate-700"
+                          >
+                            <span className={`w-4 h-4 rounded flex items-center justify-center border transition ${includeCardFee ? "bg-[#4E8C6F] border-[#4E8C6F] text-white" : "bg-white border-slate-300"}`}>
+                              {includeCardFee ? "✓" : ""}
+                            </span>
+                            <span>💳 海外碌卡（計入 +{cardFeePct}% 手續費）</span>
+                          </button>
+                          {includeCardFee && amount && (
+                            <span className="text-[11px] font-extrabold text-[#3B6E52]">
+                              ≈ HK$ {Math.round(toHKD(amount, currency, cardFeePct)).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-xs space-y-1.5">
@@ -1802,6 +1876,7 @@
                                 const displaySplits = activeSplits.length > 0 ? activeSplits : members;
                                 const activeContribs = (exp.contributors || []).filter(m => members.includes(m));
                                 const displayContribs = activeContribs.length > 0 ? activeContribs : members;
+                                const expFee = getExpFeePct(exp);
 
                                 return (
                                   <div key={exp.id} className="bg-white px-4 py-3.5 rounded-[22px] shadow-sm border border-white flex justify-between items-center transition hover:shadow-md">
@@ -1810,11 +1885,16 @@
                                         {meta.icon}
                                       </div>
                                       <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-1.5">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
                                           <p className="font-bold text-slate-800 text-sm truncate">{exp.title}</p>
                                           {exp.splitMode === "custom" && (
                                             <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 rounded font-bold flex-shrink-0">
                                               逐樣計
+                                            </span>
+                                          )}
+                                          {expFee > 0 && (
+                                            <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded font-bold flex-shrink-0">
+                                              💳 +{expFee}%
                                             </span>
                                           )}
                                         </div>
@@ -1840,7 +1920,7 @@
                                         </p>
                                         {exp.currency !== "HKD" && (
                                           <p className="text-[11px] text-slate-400 font-medium">
-                                            ≈ HK$ {Math.round(toHKD(exp.amount, exp.currency)).toLocaleString()}
+                                            ≈ HK$ {Math.round(getExpHKD(exp)).toLocaleString()}
                                           </p>
                                         )}
                                       </div>
@@ -2143,7 +2223,50 @@
                   <input type="text" value={tripName} onChange={e => setTripName(e.target.value)} onBlur={handleTripNameBlur} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
                 </div>
 
-                {/* 同行成員管理 (只留鉛筆圖示 ✏️，刪走「改名」兩隻字) */}
+                {/* 💳 新增：海外信用卡手續費 (%) 設定 */}
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="font-extrabold text-slate-800 text-sm">💳 海外信用卡手續費 (%)</h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">記帳時勾選「海外碌卡」會自動加上此手續費率</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-1.5">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.05"
+                        min="0"
+                        value={cardFeePct}
+                        onChange={e => handleCardFeeChange(e.target.value)}
+                        className="w-14 text-right text-sm font-black text-[#3B6E52] bg-transparent focus:outline-none"
+                      />
+                      <span className="text-xs font-extrabold text-[#3B6E52]">%</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: "免手續費 0%", val: 0 },
+                      { label: "銀聯 / AE 1%", val: 1 },
+                      { label: "標準 1.95%", val: 1.95 },
+                      { label: "2%", val: 2 }
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => handleCardFeeChange(preset.val)}
+                        className={`text-[11px] px-2.5 py-1 rounded-lg font-bold border transition ${
+                          Number(cardFeePct) === preset.val
+                            ? "bg-[#4E8C6F] text-white border-[#4E8C6F]"
+                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-emerald-50"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 同行成員管理 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <div>
                     <h3 className="font-extrabold text-slate-800 text-sm">👥 同行成員名單 ({members.length}人)</h3>
@@ -2320,7 +2443,7 @@
 
           </div>
 
-          {/* ✏️ 編輯帳目彈窗 (Edit Page Modal - 內置垃圾桶 Delete 按鈕) */}
+          {/* ✏️ 編輯帳目彈窗 (Edit Page Modal - 內置信用卡手續費開關及垃圾桶 Delete 按鈕) */}
           {editingExpense && (
             <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 backdrop-blur-xs px-4 py-6 overflow-y-auto">
               <form onSubmit={handleSaveEditExpense} className="bg-white rounded-[28px] p-5 w-full max-w-sm shadow-2xl border border-emerald-50 space-y-3.5 my-auto max-h-[90vh] overflow-y-auto">
@@ -2411,24 +2534,46 @@
                       className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-bold"
                       required
                     />
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        step="any"
-                        value={editingExpense.amountStr}
-                        onChange={e => setEditingExpense({ ...editingExpense, amountStr: e.target.value })}
-                        placeholder="金額"
-                        className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-extrabold text-[#3B6E52]"
-                        required
-                      />
-                      <select
-                        value={editingExpense.currency}
-                        onChange={e => setEditingExpense({ ...editingExpense, currency: e.target.value })}
-                        className="bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-2 text-sm font-extrabold text-[#3B6E52]"
-                      >
-                        {sortedCurrencies.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step="any"
+                          value={editingExpense.amountStr}
+                          onChange={e => setEditingExpense({ ...editingExpense, amountStr: e.target.value })}
+                          placeholder="金額"
+                          className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-extrabold text-[#3B6E52]"
+                          required
+                        />
+                        <select
+                          value={editingExpense.currency}
+                          onChange={e => setEditingExpense({ ...editingExpense, currency: e.target.value })}
+                          className="bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-2 text-sm font-extrabold text-[#3B6E52]"
+                        >
+                          {sortedCurrencies.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+
+                      {/* 編輯模式中嘅海外信用卡手續費開關 */}
+                      {editingExpense.currency !== "HKD" && editingExpense.payer !== POOL_PAYER_KEY && (
+                        <div className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/80">
+                          <button
+                            type="button"
+                            onClick={() => setEditingExpense({
+                              ...editingExpense,
+                              hasCardFee: !editingExpense.hasCardFee,
+                              cardFeePct: Number(cardFeePct) || 1.95
+                            })}
+                            className="flex items-center gap-2 text-xs font-bold text-slate-700"
+                          >
+                            <span className={`w-4 h-4 rounded flex items-center justify-center border transition ${editingExpense.hasCardFee ? "bg-[#4E8C6F] border-[#4E8C6F] text-white" : "bg-white border-slate-300"}`}>
+                              {editingExpense.hasCardFee ? "✓" : ""}
+                            </span>
+                            <span>💳 海外碌卡（+{editingExpense.cardFeePct || cardFeePct}% 手續費）</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-xs space-y-1">
