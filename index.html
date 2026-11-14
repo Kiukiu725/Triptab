@@ -73,7 +73,7 @@
     }
     const db = firebase.database();
 
-    // 16 隻常用貨幣基準匯率 (2x8 雙數完美對齊，無右下角缺口)
+    // 16 隻常用貨幣基準匯率 (2x8 雙數完美對齊)
     const DEFAULT_RATES = {
       JPY: 0.052,
       HKD: 1.0,
@@ -1336,7 +1336,7 @@
           text += `👛 公數錢包結餘：${poolStrs.join(" / ")}\n`;
         }
         text += `------------------------\n`;
-        text += `【過數指引 / FPS / PayMe (已連公數多除少補)】：\n`;
+        text += `【過數指引 / FPS / PayMe (已連公數多除小補)】：\n`;
         if (settlement.transactions.length === 0) {
           text += `✅ 大家帳目已平衡，互不相欠！\n`;
         } else {
@@ -1500,8 +1500,9 @@
                     <p className="text-2xl font-black text-slate-800 tracking-tight truncate">
                       HK$ {Math.round(totalHKD).toLocaleString()}
                     </p>
+                    {/* 修改 2：不用顯示人均約幾多錢，只顯示幾多筆消費 */}
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      人均約 HK$ {members.length > 0 ? Math.round(totalHKD / members.length).toLocaleString() : 0} • 共 {realExpenses.length} 筆消費
+                      共 {realExpenses.length} 筆消費
                     </p>
                   </div>
                 </div>
@@ -1568,19 +1569,17 @@
             {/* TAB 1: 記帳明細 */}
             {activeTab === "expenses" && (
               <div className="space-y-3.5">
-                <div className="flex justify-between items-center px-1">
-                  <div>
-                    <h2 className="text-base font-extrabold text-slate-800">Trip Timeline</h2>
-                    <p className="text-[11px] text-slate-500">
-                      按旅程日數自動分組 • 預設貨幣：<span className="font-bold text-[#3B6E52]">{defaultCurrency}</span>
-                    </p>
-                  </div>
+                {/* 修改 4：刪除 Trip Timeline 同 按旅程日數自動分組，換成「記低一筆新開支 · 預設貨幣：」 */}
+                <div className="flex justify-between items-center px-1 gap-2">
+                  <h2 className="text-sm font-extrabold text-slate-800">
+                    ✍️ 記低一筆新開支 · 預設貨幣：<span className="text-[#3B6E52]">{defaultCurrency}</span>
+                  </h2>
                   <button
                     onClick={() => {
                       if (!showAddForm) setCurrency(defaultCurrency);
                       setShowAddForm(!showAddForm);
                     }}
-                    className="bg-[#4E8C6F] text-white text-xs font-bold px-3.5 py-2 rounded-full shadow-sm hover:bg-[#3F765C] transition"
+                    className="bg-[#4E8C6F] text-white text-xs font-bold px-3.5 py-2 rounded-full shadow-sm hover:bg-[#3F765C] transition whitespace-nowrap flex-shrink-0"
                   >
                     {showAddForm ? "✕ 收起表單" : "＋ 記一筆新開支"}
                   </button>
@@ -1589,7 +1588,7 @@
                 {showAddForm && (
                   <form onSubmit={handleAddExpense} className="bg-white p-4 rounded-[24px] shadow-md border border-emerald-100/80 space-y-3 animate-fadeIn">
                     <div className="flex justify-between items-center gap-2">
-                      <h3 className="font-bold text-slate-800 text-sm">✍️ 記低一筆新開支</h3>
+                      <span className="text-xs font-bold text-slate-500">📅 消費日期與類別</span>
                       <div className="flex items-center gap-1.5">
                         <input
                           type="date"
@@ -1834,7 +1833,6 @@
                   ) : (
                     groupedDays.map(dayGroup => {
                       const isCollapsed = !!collapsedDays[dayGroup.date];
-                      const perPersonDay = members.length > 0 ? Math.round(dayGroup.dayTotalHKD / members.length) : 0;
 
                       return (
                         <div key={dayGroup.date} className="space-y-2">
@@ -1851,15 +1849,11 @@
                                 {dayGroup.shortDate} ({dayGroup.items.length} 筆)
                               </span>
                             </div>
+                            {/* 修改 3：不用每天都顯示人均幾多錢，只顯示當日總金額 */}
                             <div className="flex items-center gap-2 text-right">
-                              <div>
-                                <span className="text-xs font-black text-[#3B6E52]">
-                                  HK$ {Math.round(dayGroup.dayTotalHKD).toLocaleString()}
-                                </span>
-                                <span className="text-[10px] text-slate-400 ml-1.5">
-                                  (人均 ${perPersonDay.toLocaleString()})
-                                </span>
-                              </div>
+                              <span className="text-xs font-black text-[#3B6E52]">
+                                HK$ {Math.round(dayGroup.dayTotalHKD).toLocaleString()}
+                              </span>
                               <span className="text-slate-400 text-xs">{isCollapsed ? "▼" : "▲"}</span>
                             </div>
                           </button>
@@ -1951,7 +1945,8 @@
               <div className="space-y-4">
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white">
                   <div className="flex justify-between items-center mb-3 gap-2">
-                    <h3 className="font-extrabold text-slate-800 text-sm">⚡ 自動簡化結算 (連公數多除少補)</h3>
+                    {/* 修改 1：改成「自動結算（連公數多除小補）」 */}
+                    <h3 className="font-extrabold text-slate-800 text-sm">⚡ 自動結算（連公數多除小補）</h3>
                     <button onClick={copyToWhatsApp} className="bg-[#4E8C6F] text-white text-xs px-3.5 py-2 rounded-full font-bold flex items-center gap-1 shadow-sm hover:bg-[#3F765C] flex-shrink-0">
                       📲 複製 WhatsApp 清單
                     </button>
@@ -2110,7 +2105,7 @@
               </div>
             )}
 
-            {/* TAB 3: 房間 & 成員 (專責「人與空間」：精簡為 3 張卡片) */}
+            {/* TAB 3: 房間 & 成員 */}
             {activeTab === "rooms" && (
               <div className="space-y-4">
                 
@@ -2126,7 +2121,6 @@
                     </span>
                   </div>
 
-                  {/* 整合：直接喺頂部改當前房間名稱 */}
                   <div className="bg-slate-50/90 p-2.5 rounded-2xl border border-slate-200/70 space-y-1">
                     <label className="text-[11px] font-bold text-slate-500 flex items-center justify-between">
                       <span>✏️ 當前旅程名稱（改完自動同步）</span>
@@ -2206,7 +2200,7 @@
                   </div>
                 </div>
 
-                {/* 卡片 2：開設新旅程 或 輸入代碼加入房間 (二合一整合卡) */}
+                {/* 卡片 2：開設新旅程 或 輸入代碼加入房間 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3.5">
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
@@ -2267,7 +2261,7 @@
               </div>
             )}
 
-            {/* TAB 4: 貨幣 & 類別 (專責「錢、卡費與分類規則」：同樣精簡為 3 張卡片，與第 3 頁完美平衡) */}
+            {/* TAB 4: 貨幣 & 類別 */}
             {activeTab === "rates" && (
               <div className="space-y-4">
                 
@@ -2294,7 +2288,7 @@
                   </div>
                 </div>
 
-                {/* 卡片 2：匯率與預設貨幣設定 (16 隻貨幣 2x8 對稱排列) */}
+                {/* 卡片 2：匯率與預設貨幣設定 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <div className="flex justify-between items-center gap-2">
                     <div>
@@ -2382,7 +2376,7 @@
                   </div>
                 </div>
 
-                {/* 卡片 3：活動類別自訂加減管理（搬移至第 4 頁，令兩頁長度與內容完美平衡） */}
+                {/* 卡片 3：活動類別自訂加減管理 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <div>
                     <h3 className="font-extrabold text-slate-800 text-sm">🏷️ 活動類別管理 ({categories.length}個)</h3>
