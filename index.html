@@ -73,13 +73,15 @@
     }
     const db = firebase.database();
 
+    // 16 隻常用貨幣基準匯率 (2x8 雙數完美對齊，無右下角缺口)
     const DEFAULT_RATES = {
-      HKD: 1.0,
       JPY: 0.052,
+      HKD: 1.0,
       TWD: 0.245,
       SGD: 5.82,
       KRW: 0.0058,
       THB: 0.22,
+      MYR: 1.76,
       EUR: 8.45,
       GBP: 9.95,
       USD: 7.78,
@@ -199,7 +201,6 @@
       const [customRates, setCustomRates] = useState({});
       const [defaultCurrency, setDefaultCurrency] = useState("JPY");
       const [settledMarks, setSettledMarks] = useState({});
-      // 海外信用卡手續費 (%) 設定（預設 1.95%）
       const [cardFeePct, setCardFeePct] = useState(1.95);
 
       // UI 狀態
@@ -457,7 +458,6 @@
         db.ref(`rooms/${roomId}/defaultCurrency`).set(cur);
       };
 
-      // 更新海外信用卡手續費 (%) 設定並同步至雲端
       const handleCardFeeChange = (val) => {
         setCardFeePct(val);
         const num = parseFloat(val);
@@ -468,7 +468,6 @@
         }
       };
 
-      // 按右邊 ✓ 號標記已付，文字會自動消除
       const markTransactionAsPaid = (from, to) => {
         const key = `${from}__TO__${to}`.replace(/[.#$\[\]\/]/g, "_");
         setSettledMarks(prev => ({ ...prev, [key]: true }));
@@ -480,7 +479,6 @@
         db.ref(`rooms/${roomId}/settledMarks`).remove();
       };
 
-      // 折算港幣函數（支援計入海外信用卡手續費 %）
       const toHKD = (amt, curr, feePct = 0) => {
         const r = rates[curr] || 1;
         const baseHKD = (Number(amt) || 0) * r;
@@ -490,7 +488,6 @@
         return baseHKD;
       };
 
-      // 取得單筆帳目實際適用嘅信用卡手續費 %
       const getExpFeePct = (exp) => {
         if (!exp || exp.type === "pool_topup" || exp.currency === "HKD" || exp.payer === POOL_PAYER_KEY) return 0;
         if (exp.hasCardFee) {
@@ -2113,11 +2110,11 @@
               </div>
             )}
 
-            {/* TAB 3: 設定 */}
+            {/* TAB 3: 房間 & 成員 (專責「人與空間」：精簡為 3 張卡片) */}
             {activeTab === "rooms" && (
               <div className="space-y-4">
                 
-                {/* 📁 我的房間列表 */}
+                {/* 卡片 1：我的房間列表 + 當前旅程名稱修改 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-emerald-100 space-y-3">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                     <div className="flex items-center gap-2">
@@ -2129,7 +2126,22 @@
                     </span>
                   </div>
 
-                  <div className="space-y-2.5">
+                  {/* 整合：直接喺頂部改當前房間名稱 */}
+                  <div className="bg-slate-50/90 p-2.5 rounded-2xl border border-slate-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-slate-500 flex items-center justify-between">
+                      <span>✏️ 當前旅程名稱（改完自動同步）</span>
+                      <span className="font-mono text-[#4E8C6F]">#{roomId}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={tripName}
+                      onChange={e => setTripName(e.target.value)}
+                      onBlur={handleTripNameBlur}
+                      className="w-full text-sm bg-white border border-slate-200 rounded-xl px-3 py-1.5 font-extrabold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
                     {savedRooms.map(rm => {
                       const isCurrent = rm.id === roomId;
                       return (
@@ -2141,7 +2153,7 @@
                               setActiveTab("expenses");
                             }
                           }}
-                          className={`p-3.5 rounded-2xl border flex justify-between items-center transition ${
+                          className={`p-3 rounded-2xl border flex justify-between items-center transition ${
                             isCurrent
                               ? "bg-[#EFF6F2] border-[#4E8C6F] shadow-2xs"
                               : "bg-slate-50/80 border-slate-200/80 hover:border-emerald-300 cursor-pointer"
@@ -2194,60 +2206,29 @@
                   </div>
                 </div>
 
-                {/* 開設新旅程房間 */}
-                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-extrabold text-slate-800 text-sm">✨ 開設新旅程房間</h3>
-                    <span className="text-[11px] bg-[#EFF6F2] text-[#3B6E52] px-2.5 py-0.5 rounded-full font-bold">自動配發 6 位防撞代碼</span>
-                  </div>
-                  <form onSubmit={handleCreateNewRoom} className="flex gap-2">
-                    <input type="text" placeholder="輸入新旅程名稱 (例: 沖繩家族遊)" value={newRoomCustomName} onChange={e => setNewRoomCustomName(e.target.value)} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
-                    <button type="submit" className="bg-[#4E8C6F] text-white text-xs font-bold px-4 rounded-xl shadow-sm hover:bg-[#3F765C] whitespace-nowrap">建立新房</button>
-                  </form>
-                </div>
-
-                {/* 輸入代碼加入現有房間 */}
-                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-extrabold text-slate-800 text-sm">🚪 輸入代碼加入現有房間</h3>
-                    <span className="text-xs text-[#4E8C6F] font-mono font-bold">當前: #{roomId}</span>
-                  </div>
-                  <form onSubmit={handleSwitchRoom} className="flex gap-2">
-                    <input type="text" placeholder="輸入 6 位房間代碼 (例: X7K9P2)" value={roomInput} onChange={e => setRoomInput(e.target.value.toUpperCase())} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
-                    <button type="submit" className="bg-slate-800 text-white text-xs font-bold px-4 rounded-xl shadow-sm hover:bg-slate-700 whitespace-nowrap">進入房間</button>
-                  </form>
-                </div>
-
-                {/* 當前旅程名稱 */}
-                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-2">
-                  <h3 className="font-extrabold text-slate-800 text-sm">✏️ 當前旅程名稱 (改完自動同步)</h3>
-                  <input type="text" value={tripName} onChange={e => setTripName(e.target.value)} onBlur={handleTripNameBlur} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
-                </div>
-
-                {/* 💳 海外信用卡手續費 (%) 設定（只留用戶自己輸入框，已刪除下方格仔） */}
-                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white">
-                  <div className="flex justify-between items-center gap-3">
-                    <div>
-                      <h3 className="font-extrabold text-slate-800 text-sm">💳 海外信用卡手續費 (%)</h3>
-                      <p className="text-[11px] text-slate-400 mt-0.5">記帳時勾選「海外碌卡」會自動加上此手續費率</p>
+                {/* 卡片 2：開設新旅程 或 輸入代碼加入房間 (二合一整合卡) */}
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3.5">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-extrabold text-slate-800 text-sm">✨ 開設新旅程房間</h3>
+                      <span className="text-[10px] bg-[#EFF6F2] text-[#3B6E52] px-2 py-0.5 rounded-full font-bold">自動配發 6 位防撞代碼</span>
                     </div>
-                    <div className="flex items-center gap-1.5 bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-2 flex-shrink-0">
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        step="any"
-                        min="0"
-                        placeholder="0"
-                        value={cardFeePct}
-                        onChange={e => handleCardFeeChange(e.target.value)}
-                        className="w-16 text-right text-sm font-black text-[#3B6E52] bg-transparent focus:outline-none"
-                      />
-                      <span className="text-xs font-extrabold text-[#3B6E52]">%</span>
-                    </div>
+                    <form onSubmit={handleCreateNewRoom} className="flex gap-2">
+                      <input type="text" placeholder="輸入新旅程名稱 (例: 沖繩家族遊)" value={newRoomCustomName} onChange={e => setNewRoomCustomName(e.target.value)} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
+                      <button type="submit" className="bg-[#4E8C6F] text-white text-xs font-bold px-4 rounded-xl shadow-sm hover:bg-[#3F765C] whitespace-nowrap">建立新房</button>
+                    </form>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-100 space-y-2">
+                    <h3 className="font-extrabold text-slate-800 text-sm">🚪 輸入代碼加入朋友房間</h3>
+                    <form onSubmit={handleSwitchRoom} className="flex gap-2">
+                      <input type="text" placeholder="輸入 6 位房間代碼 (例: X7K9P2)" value={roomInput} onChange={e => setRoomInput(e.target.value.toUpperCase())} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
+                      <button type="submit" className="bg-slate-800 text-white text-xs font-bold px-4 rounded-xl shadow-sm hover:bg-slate-700 whitespace-nowrap">進入房間</button>
+                    </form>
                   </div>
                 </div>
 
-                {/* 同行成員管理 */}
+                {/* 卡片 3：同行成員名單 */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <div>
                     <h3 className="font-extrabold text-slate-800 text-sm">👥 同行成員名單 ({members.length}人)</h3>
@@ -2283,62 +2264,43 @@
                     ))}
                   </div>
                 </div>
-
-                {/* 活動類別自訂加減管理 */}
-                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
-                  <div>
-                    <h3 className="font-extrabold text-slate-800 text-sm">🏷️ 活動類別管理 ({categories.length}個)</h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5">自由新增或刪除記帳類別（例如：🤿 潛水、🍶 居酒屋）</p>
-                  </div>
-                  <form onSubmit={handleAddCategory} className="flex gap-2">
-                    <input
-                      type="text"
-                      maxLength="4"
-                      placeholder="圖示"
-                      value={newCatIcon}
-                      onChange={e => setNewCatIcon(e.target.value)}
-                      className="w-14 text-center text-sm bg-slate-50 border border-slate-200 rounded-xl py-2"
-                    />
-                    <input
-                      type="text"
-                      placeholder="輸入新類別名稱 (如: 潛水 / 按摩)"
-                      value={newCatName}
-                      onChange={e => setNewCatName(e.target.value)}
-                      className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2"
-                    />
-                    <button type="submit" className="bg-[#4E8C6F] text-white text-xs font-bold px-4 rounded-xl whitespace-nowrap">
-                      ＋新增
-                    </button>
-                  </form>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {categories.map(cat => (
-                      <span key={cat.name} className="bg-slate-50 text-slate-700 border border-slate-200/80 text-xs px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5">
-                        <span>{cat.icon} {cat.name}</span>
-                        {categories.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveCategory(cat.name)}
-                            className="text-slate-400 hover:text-rose-500 font-bold pl-0.5"
-                          >
-                            ×
-                          </button>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                </div>
               </div>
             )}
 
-            {/* TAB 4: 多國匯率設定 */}
+            {/* TAB 4: 貨幣 & 類別 (專責「錢、卡費與分類規則」：同樣精簡為 3 張卡片，與第 3 頁完美平衡) */}
             {activeTab === "rates" && (
               <div className="space-y-4">
+                
+                {/* 卡片 1：海外信用卡手續費 (%) 設定 */}
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-emerald-100">
+                  <div className="flex justify-between items-center gap-3">
+                    <div>
+                      <h3 className="font-extrabold text-slate-800 text-sm">💳 海外信用卡手續費 (%)</h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">記帳時勾選「海外碌卡」會自動加上此手續費率</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-2 flex-shrink-0">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="any"
+                        min="0"
+                        placeholder="0"
+                        value={cardFeePct}
+                        onChange={e => handleCardFeeChange(e.target.value)}
+                        className="w-16 text-right text-sm font-black text-[#3B6E52] bg-transparent focus:outline-none"
+                      />
+                      <span className="text-xs font-extrabold text-[#3B6E52]">%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 卡片 2：匯率與預設貨幣設定 (16 隻貨幣 2x8 對稱排列) */}
                 <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
                   <div className="flex justify-between items-center gap-2">
                     <div>
                       <h3 className="font-extrabold text-slate-800 text-sm">🌍 匯率與預設貨幣設定</h3>
                       <p className="text-[11px] text-slate-500">
-                        💡 <strong>點擊任何貨幣即可設為預設並排最頂</strong>（目前預設：<strong className="text-[#3B6E52]">{defaultCurrency}</strong>）
+                        💡 點擊貨幣即設為預設置頂（目前：<strong className="text-[#3B6E52]">{defaultCurrency}</strong>）
                       </p>
                     </div>
                     <button
@@ -2419,6 +2381,51 @@
                     })}
                   </div>
                 </div>
+
+                {/* 卡片 3：活動類別自訂加減管理（搬移至第 4 頁，令兩頁長度與內容完美平衡） */}
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-sm">🏷️ 活動類別管理 ({categories.length}個)</h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">自由新增或刪除記帳類別（例如：🤿 潛水、🍶 居酒屋）</p>
+                  </div>
+                  <form onSubmit={handleAddCategory} className="flex gap-2">
+                    <input
+                      type="text"
+                      maxLength="4"
+                      placeholder="圖示"
+                      value={newCatIcon}
+                      onChange={e => setNewCatIcon(e.target.value)}
+                      className="w-14 text-center text-sm bg-slate-50 border border-slate-200 rounded-xl py-2"
+                    />
+                    <input
+                      type="text"
+                      placeholder="輸入新類別名稱 (如: 潛水 / 按摩)"
+                      value={newCatName}
+                      onChange={e => setNewCatName(e.target.value)}
+                      className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2"
+                    />
+                    <button type="submit" className="bg-[#4E8C6F] text-white text-xs font-bold px-4 rounded-xl whitespace-nowrap">
+                      ＋新增
+                    </button>
+                  </form>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {categories.map(cat => (
+                      <span key={cat.name} className="bg-slate-50 text-slate-700 border border-slate-200/80 text-xs px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5">
+                        <span>{cat.icon} {cat.name}</span>
+                        {categories.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCategory(cat.name)}
+                            className="text-slate-400 hover:text-rose-500 font-bold pl-0.5"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
               </div>
             )}
 
@@ -2878,18 +2885,17 @@
 
             <button onClick={() => setActiveTab("rooms")} className="flex flex-col items-center py-1 px-3 relative group">
               <svg className={`w-6 h-6 transition ${activeTab === 'rooms' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <circle cx="12" cy="12" r="3" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              <span className={`text-[10px] font-bold mt-0.5 ${activeTab === 'rooms' ? 'text-[#3D7A5A]' : 'text-slate-400'}`}>設定</span>
+              <span className={`text-[10px] font-bold mt-0.5 ${activeTab === 'rooms' ? 'text-[#3D7A5A]' : 'text-slate-400'}`}>房間 & 成員</span>
               {activeTab === "rooms" && <span className="w-1.5 h-1.5 rounded-full bg-[#3D7A5A] mt-0.5"></span>}
             </button>
 
             <button onClick={() => setActiveTab("rates")} className="flex flex-col items-center py-1 px-3 relative group">
-              <svg className={`w-6 h-6 transition ${activeTab === 'rates' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 20v-5M12 20v-9M18 20V6" />
+              <svg className={`w-6 h-6 transition ${activeTab === 'rates' ? 'text-[#3D7A5A]' : 'text-slate-400'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span className={`text-[10px] font-bold mt-0.5 ${activeTab === 'rates' ? 'text-[#3D7A5A]' : 'text-slate-400'}`}>匯率</span>
+              <span className={`text-[10px] font-bold mt-0.5 ${activeTab === 'rates' ? 'text-[#3D7A5A]' : 'text-slate-400'}`}>貨幣 & 類別</span>
               {activeTab === "rates" && <span className="w-1.5 h-1.5 rounded-full bg-[#3D7A5A] mt-0.5"></span>}
             </button>
           </div>
