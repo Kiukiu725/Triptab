@@ -199,7 +199,7 @@
       const [customRates, setCustomRates] = useState({});
       const [defaultCurrency, setDefaultCurrency] = useState("JPY");
       const [settledMarks, setSettledMarks] = useState({});
-      // 新增：海外信用卡手續費 (%) 設定（預設香港常見 1.95%）
+      // 海外信用卡手續費 (%) 設定（預設 1.95%）
       const [cardFeePct, setCardFeePct] = useState(1.95);
 
       // UI 狀態
@@ -233,7 +233,7 @@
       const [expDate, setExpDate] = useState(() => new Date().toISOString().split("T")[0]);
       const [splitMode, setSplitMode] = useState("equal");
       const [customSplitsInput, setCustomSplitsInput] = useState({});
-      const [includeCardFee, setIncludeCardFee] = useState(false); // 新增開支時是否計入信用卡手續費
+      const [includeCardFee, setIncludeCardFee] = useState(false);
 
       // 公數錢包注資表單狀態
       const [poolPerPersonAmt, setPoolPerPersonAmt] = useState("10000");
@@ -459,11 +459,12 @@
 
       // 更新海外信用卡手續費 (%) 設定並同步至雲端
       const handleCardFeeChange = (val) => {
-        const num = parseFloat(val);
-        const cleanFee = isNaN(num) || num < 0 ? 0 : num;
         setCardFeePct(val);
+        const num = parseFloat(val);
         if (!isNaN(num) && num >= 0) {
-          db.ref(`rooms/${roomId}/cardFeePct`).set(cleanFee);
+          db.ref(`rooms/${roomId}/cardFeePct`).set(num);
+        } else if (val === "") {
+          db.ref(`rooms/${roomId}/cardFeePct`).set(0);
         }
       };
 
@@ -1093,7 +1094,7 @@
         return Object.values(groupsMap).sort((a, b) => b.date.localeCompare(a.date));
       }, [expenses, rates, cardFeePct]);
 
-      // 結算演算法 (自動計入海外信用卡手續費 + 打 Tick 消除項目)
+      // 結算演算法
       const settlement = useMemo(() => {
         const balances = {};
         const removedPayerNegativeBalances = {};
@@ -1643,7 +1644,7 @@
                         </select>
                       </div>
 
-                      {/* 💳 海外信用卡手續費開關掣（當外幣記帳且非公數支付時顯示） */}
+                      {/* 💳 海外信用卡手續費開關掣 */}
                       {currency !== "HKD" && payer !== POOL_PAYER_KEY && Number(cardFeePct) > 0 && (
                         <div className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/80">
                           <button
@@ -2223,46 +2224,26 @@
                   <input type="text" value={tripName} onChange={e => setTripName(e.target.value)} onBlur={handleTripNameBlur} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-[#4E8C6F]" />
                 </div>
 
-                {/* 💳 新增：海外信用卡手續費 (%) 設定 */}
-                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white space-y-3">
-                  <div className="flex justify-between items-center">
+                {/* 💳 海外信用卡手續費 (%) 設定（只留用戶自己輸入框，已刪除下方格仔） */}
+                <div className="bg-white p-4 rounded-[24px] shadow-sm border border-white">
+                  <div className="flex justify-between items-center gap-3">
                     <div>
                       <h3 className="font-extrabold text-slate-800 text-sm">💳 海外信用卡手續費 (%)</h3>
                       <p className="text-[11px] text-slate-400 mt-0.5">記帳時勾選「海外碌卡」會自動加上此手續費率</p>
                     </div>
-                    <div className="flex items-center gap-1.5 bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-1.5">
+                    <div className="flex items-center gap-1.5 bg-[#EFF6F2] border border-emerald-200 rounded-xl px-3 py-2 flex-shrink-0">
                       <input
                         type="number"
                         inputMode="decimal"
-                        step="0.05"
+                        step="any"
                         min="0"
+                        placeholder="0"
                         value={cardFeePct}
                         onChange={e => handleCardFeeChange(e.target.value)}
-                        className="w-14 text-right text-sm font-black text-[#3B6E52] bg-transparent focus:outline-none"
+                        className="w-16 text-right text-sm font-black text-[#3B6E52] bg-transparent focus:outline-none"
                       />
                       <span className="text-xs font-extrabold text-[#3B6E52]">%</span>
                     </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      { label: "免手續費 0%", val: 0 },
-                      { label: "銀聯 / AE 1%", val: 1 },
-                      { label: "標準 1.95%", val: 1.95 },
-                      { label: "2%", val: 2 }
-                    ].map(preset => (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        onClick={() => handleCardFeeChange(preset.val)}
-                        className={`text-[11px] px-2.5 py-1 rounded-lg font-bold border transition ${
-                          Number(cardFeePct) === preset.val
-                            ? "bg-[#4E8C6F] text-white border-[#4E8C6F]"
-                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-emerald-50"
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
                   </div>
                 </div>
 
@@ -2443,7 +2424,7 @@
 
           </div>
 
-          {/* ✏️ 編輯帳目彈窗 (Edit Page Modal - 內置信用卡手續費開關及垃圾桶 Delete 按鈕) */}
+          {/* ✏️ 編輯帳目彈窗 */}
           {editingExpense && (
             <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 backdrop-blur-xs px-4 py-6 overflow-y-auto">
               <form onSubmit={handleSaveEditExpense} className="bg-white rounded-[28px] p-5 w-full max-w-sm shadow-2xl border border-emerald-50 space-y-3.5 my-auto max-h-[90vh] overflow-y-auto">
